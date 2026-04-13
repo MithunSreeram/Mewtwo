@@ -289,6 +289,60 @@ cli.add_command(report_group)
 cli.add_command(ai_group)
 
 
+@cli.command("export")
+@click.argument("name", required=False, help="Workspace slug (defaults to active)")
+@click.option("--output", "-o", type=click.Path(), help="Output .mewtwo archive path")
+def export_cmd(name, output):
+    """Export a workspace to a portable .mewtwo archive."""
+    from .workspace_io import export_workspace
+
+    if name:
+        from .utils.validators import slugify
+        ws = config.workspace_path(slugify(name))
+    else:
+        ws = config.require_active_workspace()
+
+    dest = Path(output) if output else None
+    export_workspace(ws, dest)
+
+
+@cli.command("import")
+@click.argument("archive", type=click.Path(exists=True))
+@click.option("--overwrite", is_flag=True, help="Overwrite if workspace already exists")
+@click.option("--no-activate", is_flag=True, help="Don't set imported workspace as active")
+def import_cmd(archive, overwrite, no_activate):
+    """Import a workspace from a .mewtwo archive."""
+    from .workspace_io import import_workspace
+
+    ws_dir = config.workspaces_dir()
+    archive_path = Path(archive)
+
+    if overwrite:
+        # Try to detect slug and remove existing
+        import tarfile, json, tempfile
+        with tarfile.open(archive_path, "r:gz") as tar:
+            with tempfile.TemporaryDirectory() as tmp:
+                tar.extractall(tmp)
+                manifest_path = Path(tmp) / "mewtwo-export" / "manifest.json"
+                if manifest_path.exists():
+                    slug = json.loads(manifest_path.read_text()).get("workspace_slug", "")
+                    existing = ws_dir / slug
+                    if existing.exists():
+                        import shutil
+                        shutil.rmtree(existing)
+                        warn(f"Removed existing workspace: {slug}")
+
+    try:
+        slug = import_workspace(archive_path, ws_dir)
+    except FileExistsError as e:
+        error(str(e))
+        raise SystemExit(1)
+
+    if not no_activate:
+        config.set_active_workspace(slug)
+        success(f"Active workspace → [bold]{slug}[/bold]")
+
+
 @cli.command("dashboard")
 def dashboard_cmd():
     """Launch the interactive TUI dashboard (requires: pip install 'mewtwo[tui]')."""
