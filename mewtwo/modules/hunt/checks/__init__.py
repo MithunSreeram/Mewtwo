@@ -6,6 +6,9 @@ from .auth import AuthCheck
 from .open_redirect import OpenRedirectCheck
 from .cors import CORSCheck
 from .info_disclosure import InfoDisclosureCheck
+from .rate_limit import RateLimitCheck
+from .path_traversal import PathTraversalCheck
+from .xxe import XXECheck
 
 ALL_CHECKS = [
     IDORCheck,
@@ -16,4 +19,7 @@ ALL_CHECKS = [
     OpenRedirectCheck,
     CORSCheck,
     InfoDisclosureCheck,
+    RateLimitCheck,
+    PathTraversalCheck,
+    XXECheck,
 ]
