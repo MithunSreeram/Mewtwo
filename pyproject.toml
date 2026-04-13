@@ -30,6 +30,16 @@ dev = [
     "ruff>=0.1",
     "mypy>=1.0",
 ]
+pdf = [
+    "weasyprint>=60.0",
+]
+tui = [
+    "textual>=0.50.0",
+]
+all = [
+    "weasyprint>=60.0",
+    "textual>=0.50.0",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]

@@ -30,7 +30,7 @@ def report_group():
 
 
 @report_group.command("generate")
-@click.option("--format", "fmt", type=click.Choice(["md", "html", "all"]), default="all")
+@click.option("--format", "fmt", type=click.Choice(["md", "html", "pdf", "all"]), default="all")
 @click.option("--output", "-o", help="Output path (without extension)")
 @click.option("--include", "include_status",
               type=click.Choice(["draft", "confirmed", "all"]), default="confirmed")
@@ -78,6 +78,61 @@ def generate_cmd(fmt, output, include_status, no_ai):
         html_path = Path(f"{base_name}.html")
         html_path.write_text(render_html(ctx))
         success(f"HTML report: {html_path}")
+
+    if fmt in ("pdf", "all"):
+        pdf_path = Path(f"{base_name}.pdf")
+        try:
+            from .renderer import render_pdf
+            render_pdf(ctx, pdf_path)
+            success(f"PDF report: {pdf_path}")
+        except ImportError as e:
+            from ...utils.console import warn
+            warn(str(e))
+
+
+@report_group.command("pdf")
+@click.option("--output", "-o", help="Output PDF path")
+@click.option("--include", "include_status",
+              type=click.Choice(["draft", "confirmed", "all"]), default="confirmed")
+@click.option("--no-ai", is_flag=True)
+def pdf_cmd(output, include_status, no_ai):
+    """Generate a PDF report (requires: pip install 'mewtwo[pdf]')."""
+    from .builder import build_report_context
+    from .renderer import render_pdf
+    from datetime import date
+
+    ws, db, target_row = _get_workspace_and_db()
+
+    if include_status == "all":
+        statuses = ["draft", "confirmed", "reported", "accepted"]
+    else:
+        statuses = ["confirmed", "reported", "accepted"]
+
+    info("Building report context...")
+    try:
+        ctx = build_report_context(
+            db_path=config.db_path(ws),
+            include_statuses=statuses,
+            use_ai=not no_ai,
+        )
+    except RuntimeError as e:
+        error(str(e))
+        raise SystemExit(1)
+
+    if not ctx["findings"]:
+        info("No findings match the filter.")
+        return
+
+    slug = target_row["slug"]
+    today = date.today().isoformat()
+    pdf_path = Path(output) if output else (config.reports_dir(ws) / f"{slug}_{today}.pdf")
+
+    try:
+        render_pdf(ctx, pdf_path)
+        success(f"PDF report: {pdf_path}")
+    except ImportError as e:
+        error(str(e))
+        raise SystemExit(1)
 
 
 @report_group.command("preview")
