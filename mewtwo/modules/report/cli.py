@@ -147,3 +147,64 @@ def export_cmd(finding_id, fmt, output):
         out_path.write_text(render_html(ctx))
 
     success(f"Finding exported: {out_path}")
+
+
+@report_group.command("submit")
+@click.argument("finding_id")
+@click.option("--platform", required=True,
+              type=click.Choice(["hackerone", "bugcrowd", "h1", "bc"]),
+              help="Target platform")
+@click.option("--h1-username", envvar="H1_USERNAME")
+@click.option("--h1-token", envvar="H1_API_TOKEN")
+@click.option("--h1-program", envvar="H1_PROGRAM_HANDLE")
+@click.option("--bc-token", envvar="BC_API_TOKEN")
+@click.option("--bc-program", envvar="BC_PROGRAM_CODE")
+@click.option("--dry-run", is_flag=True, help="Preview report body without submitting")
+def submit_cmd(finding_id, platform, h1_username, h1_token, h1_program,
+               bc_token, bc_program, dry_run):
+    """Submit a confirmed finding directly to HackerOne or Bugcrowd."""
+    from .submit import HackerOneClient, BugcrowdClient, _build_h1_report_body
+    from .builder import _deserialize_finding
+
+    ws, db, target_row = _get_workspace_and_db()
+    repo = FindingRepository(db)
+
+    rows = list(db["findings"].rows_where(
+        "id LIKE ? AND target_id = ?", [f"{finding_id}%", target_row["id"]]
+    ))
+    if not rows:
+        error(f"Finding not found: {finding_id}")
+        raise SystemExit(1)
+
+    f = _deserialize_finding(repo._row_to_dict(dict(rows[0])))
+    finding_dict = f.model_dump(mode="json")
+
+    if dry_run:
+        console.print("[info]Dry run — report body preview:[/info]\n")
+        console.print(_build_h1_report_body(finding_dict))
+        return
+
+    platform = platform.lower()
+
+    if platform in ("hackerone", "h1"):
+        if not all([h1_username, h1_token, h1_program]):
+            error("HackerOne requires --h1-username, --h1-token, --h1-program (or env vars H1_USERNAME, H1_API_TOKEN, H1_PROGRAM_HANDLE)")
+            raise SystemExit(1)
+        client = HackerOneClient(h1_username, h1_token, h1_program)
+        result = client.submit(finding_dict)
+
+    elif platform in ("bugcrowd", "bc"):
+        if not all([bc_token, bc_program]):
+            error("Bugcrowd requires --bc-token, --bc-program (or env vars BC_API_TOKEN, BC_PROGRAM_CODE)")
+            raise SystemExit(1)
+        client = BugcrowdClient(bc_token, bc_program)
+        result = client.submit(finding_dict)
+
+    else:
+        error(f"Unknown platform: {platform}")
+        raise SystemExit(1)
+
+    if "error" not in result:
+        # Mark finding as reported
+        repo.update_status(f.id, "reported")
+        success(f"Finding status updated to 'reported'.")
