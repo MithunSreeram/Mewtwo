@@ -218,6 +218,47 @@ class AIClient:
             max_tokens=2048,
         )
 
+    def analyze_attack_chains(
+        self,
+        findings: list[dict],
+        db_path: Path | None = None,
+    ) -> dict:
+        """Identify chains linking multiple findings into higher-impact attacks."""
+        from .prompts import attack_chain_system, attack_chain_user
+        from .tools import ATTACK_CHAIN_TOOL
+
+        system = attack_chain_system(self.workspace_context_snippet(db_path))
+        user_msg = attack_chain_user(findings)
+        return self.complete_with_tool(
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            tool=ATTACK_CHAIN_TOOL,
+            max_tokens=8096,
+        )
+
+    def generate_personalised_payloads(
+        self,
+        vuln_class: str,
+        url: str,
+        parameter: str,
+        tech_stack: list[str],
+        existing_payloads: list[str] | None = None,
+    ) -> list[dict]:
+        """Generate context-aware structured payloads for a vuln class + stack."""
+        from .prompts import personalised_payload_system, personalised_payload_user
+        from .tools import PERSONALISED_PAYLOAD_TOOL
+
+        system = personalised_payload_system()
+        user_msg = personalised_payload_user(
+            vuln_class, url, parameter, tech_stack, existing_payloads
+        )
+        result = self.complete_with_tool(
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            tool=PERSONALISED_PAYLOAD_TOOL,
+        )
+        return result.get("payloads", [])
+
     def ask(self, question: str, context: str = "", stream: bool = False):
         """Free-form question with optional workspace context."""
         from .prompts import ask_system

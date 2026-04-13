@@ -194,6 +194,71 @@ Top findings:
 {json.dumps([{"title": f.get("title"), "severity": f.get("severity"), "impact": f.get("impact", "")} for f in top_findings], indent=2)}"""
 
 
+def attack_chain_system(workspace_context: str = "") -> str:
+    ctx = f"\n\nWorkspace context:\n{workspace_context}" if workspace_context else ""
+    return f"""{_PURPLE_TEAM_PERSONA}
+
+You are performing attack chain analysis on a set of security findings.{ctx}
+
+Your goal is to identify how individual vulnerabilities can be chained together to achieve
+a higher-impact compromise than any single finding provides alone.
+
+Classic chains to look for:
+- CORS misconfig → stored XSS → session hijack
+- SSRF → cloud metadata → credential theft → privilege escalation
+- IDOR + weak auth → account takeover
+- Open redirect → OAuth token theft
+- Info disclosure (stack trace/debug) → targeted SQLi or XXE
+- Rate limit bypass + user enumeration → credential stuffing
+
+Report chains that are realistic and exploitable, not theoretical."""
+
+
+def attack_chain_user(findings: list[dict]) -> str:
+    return f"""Analyze these {len(findings)} findings and identify attack chains where multiple
+vulnerabilities combine for higher impact.
+
+FINDINGS:
+{json.dumps(findings, indent=2)}
+
+Use the provided tool to report chains. Only report chains that make practical sense
+given the findings. A chain should involve at least 2 findings and produce materially
+higher impact than the individual findings alone."""
+
+
+def personalised_payload_system() -> str:
+    return f"""{_PURPLE_TEAM_PERSONA}
+
+You generate highly targeted, context-aware security testing payloads.
+You tailor every payload to the specific technology stack, framework, and endpoint behavior.
+
+Rules:
+- Analyse the tech stack and generate stack-specific variants (e.g. PHP-specific SQLi, Django CSRF, React DOM XSS)
+- Include both simple detection probes and advanced exploitation payloads
+- For each payload explain the technique and where to inject it
+- Payloads must be ready to use — not pseudocode
+- Return 6–10 payloads using the provided tool"""
+
+
+def personalised_payload_user(
+    vuln_class: str,
+    url: str,
+    parameter: str,
+    tech_stack: list[str],
+    existing_payloads: list[str] | None = None,
+) -> str:
+    tech_str = ", ".join(tech_stack) if tech_stack else "unknown"
+    existing = f"\nAlready tested (do not duplicate):\n" + "\n".join(existing_payloads) if existing_payloads else ""
+    return f"""Generate personalised payloads for:
+
+Vulnerability class: {vuln_class}
+Target URL: {url}
+Parameter: {parameter}
+Detected technology stack: {tech_str}{existing}
+
+Tailor the payloads specifically to the detected stack."""
+
+
 def ask_system(context: str = "") -> str:
     ctx = f"\n\nCurrent workspace context:\n{context}" if context else ""
     return f"""{_PURPLE_TEAM_PERSONA}
