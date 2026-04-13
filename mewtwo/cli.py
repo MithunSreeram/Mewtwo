@@ -287,3 +287,14 @@ cli.add_command(hunt_group)
 cli.add_command(findings_group)
 cli.add_command(report_group)
 cli.add_command(ai_group)
+
+
+@cli.command("dashboard")
+def dashboard_cmd():
+    """Launch the interactive TUI dashboard (requires: pip install 'mewtwo[tui]')."""
+    try:
+        from .tui import launch_dashboard
+        launch_dashboard()
+    except ImportError as e:
+        error(str(e))
+        raise SystemExit(1)
