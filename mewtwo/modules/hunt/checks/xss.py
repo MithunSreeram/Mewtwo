@@ -57,7 +57,8 @@ class XSSCheck(BaseCheck):
                 test_url = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))
 
                 try:
-                    resp = await client.get(test_url)
+                    req = client.build_request("GET", test_url)
+                    resp = await client.send(req)
                 except Exception:
                     continue
 
@@ -67,6 +68,9 @@ class XSSCheck(BaseCheck):
                     re.escape(payload).replace("\\<", "<").replace("\\>", ">"),
                     body, re.I
                 ):
+                    from ....utils.evidence import format_request, format_response
+                    raw_req = format_request(req)
+                    raw_resp = format_response(resp)
                     evidence = self._evidence_snippet(
                         f"GET {test_url}",
                         f"HTTP {resp.status_code}\n{body[:400]}",
@@ -88,6 +92,8 @@ class XSSCheck(BaseCheck):
                         parameter=param,
                         description=f"Parameter `{param}` reflects input unsanitized. Payload: `{payload}`",
                         evidence=evidence,
+                        raw_request=raw_req,
+                        raw_response=raw_resp,
                         references=self.references,
                     ))
                     break  # One finding per param

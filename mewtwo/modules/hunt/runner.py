@@ -20,6 +20,7 @@ from .checks.base import BaseCheck, FindingDraft
 async def run_hunt(
     target_id: str,
     db_path: Path,
+    evidence_dir: Path | None = None,
     category_filter: str | None = None,
     vector_id: str | None = None,
     check_names: list[str] | None = None,
@@ -95,6 +96,21 @@ async def run_hunt(
                     drafts = await check.run(vector, http, ai)
                     for draft in drafts:
                         finding = _draft_to_finding(draft, target_id)
+                        # Save raw HTTP evidence to disk if captured
+                        if evidence_dir and (draft.raw_request or draft.raw_response):
+                            from ...utils.evidence import save_evidence
+                            ev_path = save_evidence(
+                                evidence_dir=evidence_dir,
+                                finding_id=finding.id,
+                                label=check.name,
+                                raw_request=draft.raw_request,
+                                raw_response=draft.raw_response,
+                            )
+                            # Attach file path as an evidence entry
+                            from ...models.finding import Evidence
+                            finding.evidence.append(
+                                Evidence(kind="note", content=f"Evidence file: {ev_path}")
+                            )
                         findings_repo.upsert(finding)
                         vector_findings.append(finding)
                         console.print(

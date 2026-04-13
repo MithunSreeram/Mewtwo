@@ -44,6 +44,7 @@ def run_hunt_cmd(category, vector_id, check_names, no_ai):
     findings = asyncio.run(run_hunt(
         target_id=target_row["id"],
         db_path=config.db_path(ws),
+        evidence_dir=config.evidence_dir(ws),
         category_filter=category,
         vector_id=vector_id,
         check_names=checks_list,

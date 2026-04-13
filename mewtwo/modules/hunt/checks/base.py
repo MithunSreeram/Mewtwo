@@ -24,6 +24,9 @@ class FindingDraft:
     description: str = ""
     evidence: str = ""
     references: list[str] = field(default_factory=list)
+    # Raw HTTP proof — populated by checks that capture request/response
+    raw_request: str = ""
+    raw_response: str = ""
 
 
 class BaseCheck(ABC):

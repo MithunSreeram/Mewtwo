@@ -266,6 +266,33 @@ def evidence_cmd(finding_id, kind, content, caption):
     success(f"Evidence ({kind}) attached to finding {fid[:8]}.")
 
 
+@findings_group.command("evidence")
+@click.argument("finding_id")
+def evidence_cmd(finding_id):
+    """Show captured HTTP evidence files for a finding."""
+    from rich.syntax import Syntax
+
+    ws, db, target_row, repo = _get_repo()
+    ev_dir = config.evidence_dir(ws) / finding_id
+
+    # Try prefix match first
+    if not ev_dir.exists():
+        matches = list(config.evidence_dir(ws).glob(f"{finding_id}*"))
+        if not matches:
+            info("No evidence files found for this finding.")
+            return
+        ev_dir = matches[0]
+
+    files = sorted(ev_dir.glob("*.txt"))
+    if not files:
+        info("No evidence files found.")
+        return
+
+    for fp in files:
+        console.print(f"\n[bold]{fp.name}[/bold]")
+        console.print(Syntax(fp.read_text(), "http", theme="monokai", line_numbers=False))
+
+
 @findings_group.command("delete")
 @click.argument("finding_id")
 @click.confirmation_option(prompt="Are you sure you want to delete this finding?")
