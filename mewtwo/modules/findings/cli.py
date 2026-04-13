@@ -234,15 +234,25 @@ def enrich_cmd(finding_id):
         error("AI returned no enrichment.")
 
 
-@findings_group.command("evidence")
+@findings_group.command("attach")
 @click.argument("finding_id")
-@click.option("--kind", type=click.Choice(["request", "response", "screenshot", "note"]),
-              default="note")
-@click.option("--content", required=True, help="Evidence content or file path")
-@click.option("--caption", default="")
-def evidence_cmd(finding_id, kind, content, caption):
-    """Attach evidence to a finding."""
-    import os
+@click.argument("filepath", type=click.Path(exists=True))
+@click.option("--kind", type=click.Choice(["screenshot", "burp", "poc", "note", "request", "response"]),
+              default="note", help="Type of evidence")
+@click.option("--caption", default="", help="Short description of this attachment")
+def attach_cmd(finding_id, filepath, kind, caption):
+    """Attach a file (screenshot, Burp export, PoC script) to a finding.
+
+    The file is copied into the evidence directory and linked in the finding record.
+
+    \b
+    Examples:
+      mewtwo findings attach abc123 screenshot.png --kind screenshot --caption "XSS PoC"
+      mewtwo findings attach abc123 burp_export.xml --kind burp
+      mewtwo findings attach abc123 exploit.py --kind poc
+    """
+    import shutil
+    from pathlib import Path as P
 
     ws, db, target_row, repo = _get_repo()
 
@@ -254,43 +264,90 @@ def evidence_cmd(finding_id, kind, content, caption):
         raise SystemExit(1)
 
     fid = rows[0]["id"]
+    src = P(filepath)
+
+    # Copy file into evidence/<finding_id>/attachments/
+    dest_dir = config.evidence_dir(ws) / fid / "attachments"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / src.name
+    shutil.copy2(src, dest)
+
+    # Record in DB evidence JSON
     existing_evidence = json.loads(rows[0].get("evidence_json") or "[]")
-
-    # If content is a file path, read it
-    if os.path.exists(content):
-        with open(content) as fp:
-            content = fp.read()
-
-    existing_evidence.append({"kind": kind, "content": content, "caption": caption})
+    existing_evidence.append({
+        "kind": kind,
+        "content": str(dest),
+        "caption": caption or src.name,
+    })
     repo.update_fields(fid, evidence_json=json.dumps(existing_evidence))
-    success(f"Evidence ({kind}) attached to finding {fid[:8]}.")
+    success(f"[{kind}] {src.name} attached to finding {fid[:8]}.")
+    console.print(f"  Stored at: [dim]{dest}[/dim]")
 
 
 @findings_group.command("evidence")
 @click.argument("finding_id")
-def evidence_cmd(finding_id):
-    """Show captured HTTP evidence files for a finding."""
+@click.option("--http", "show_http", is_flag=True, help="Show raw HTTP captures")
+@click.option("--attachments", "show_attach", is_flag=True, help="List file attachments")
+def evidence_cmd(finding_id, show_http, show_attach):
+    """Show all evidence for a finding (HTTP captures + file attachments).
+
+    By default shows both. Use --http or --attachments to filter.
+    """
+    from pathlib import Path as P
     from rich.syntax import Syntax
+    from rich.table import Table
 
     ws, db, target_row, repo = _get_repo()
-    ev_dir = config.evidence_dir(ws) / finding_id
 
-    # Try prefix match first
-    if not ev_dir.exists():
-        matches = list(config.evidence_dir(ws).glob(f"{finding_id}*"))
-        if not matches:
-            info("No evidence files found for this finding.")
-            return
-        ev_dir = matches[0]
+    rows = list(db["findings"].rows_where(
+        "id LIKE ? AND target_id = ?", [f"{finding_id}%", target_row["id"]]
+    ))
+    if not rows:
+        error(f"Finding not found: {finding_id}")
+        raise SystemExit(1)
 
-    files = sorted(ev_dir.glob("*.txt"))
-    if not files:
-        info("No evidence files found.")
-        return
+    fid = rows[0]["id"]
+    show_all = not show_http and not show_attach
 
-    for fp in files:
-        console.print(f"\n[bold]{fp.name}[/bold]")
-        console.print(Syntax(fp.read_text(), "http", theme="monokai", line_numbers=False))
+    # 1. HTTP captures (auto-saved .txt files)
+    if show_http or show_all:
+        ev_base = config.evidence_dir(ws)
+        # Match by full ID or prefix
+        candidates = [ev_base / fid] + list(ev_base.glob(f"{finding_id}*"))
+        ev_dir = next((c for c in candidates if c.is_dir()), None)
+
+        http_files = sorted(ev_dir.glob("*.txt")) if ev_dir else []
+        if http_files:
+            console.print(f"\n[bold]HTTP Captures ({len(http_files)})[/bold]")
+            for fp in http_files:
+                console.print(f"\n[dim]{fp.name}[/dim]")
+                console.print(Syntax(fp.read_text()[:3000], "http", theme="monokai", line_numbers=False))
+        elif show_http:
+            info("No HTTP capture files found.")
+
+    # 2. File attachments
+    if show_attach or show_all:
+        evidence_list = json.loads(rows[0].get("evidence_json") or "[]")
+        file_attachments = [e for e in evidence_list if P(e.get("content", "")).exists()]
+
+        if file_attachments:
+            t = Table("Kind", "File", "Caption", title="File Attachments")
+            for e in file_attachments:
+                p = P(e["content"])
+                t.add_row(e.get("kind", "—"), p.name, e.get("caption", ""))
+            console.print(t)
+        elif show_attach:
+            info("No file attachments found. Use [bold]mewtwo findings attach[/bold] to add one.")
+
+    # 3. Inline evidence notes
+    if show_all:
+        evidence_list = json.loads(rows[0].get("evidence_json") or "[]")
+        notes = [e for e in evidence_list if not P(e.get("content", "NOEXIST")).exists()]
+        if notes:
+            console.print(f"\n[bold]Inline Evidence Notes ({len(notes)})[/bold]")
+            for e in notes:
+                console.print(f"\n[dim]{e.get('kind', 'note')}[/dim]: {e.get('caption', '')}")
+                console.print(e.get("content", "")[:500])
 
 
 @findings_group.command("delete")
