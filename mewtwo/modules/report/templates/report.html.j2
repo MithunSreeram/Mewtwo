@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Security Report: {{ target.name }}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-size: 14px; line-height: 1.6; color: #1a1a1a; background: #fff; }
+    .container { max-width: 960px; margin: 0 auto; padding: 40px 24px; }
+    h1 { font-size: 28px; font-weight: 700; margin-bottom: 8px; }
+    h2 { font-size: 20px; font-weight: 600; margin: 32px 0 16px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 600; margin: 24px 0 12px; }
+    h4 { font-size: 14px; font-weight: 600; margin: 16px 0 8px; color: #374151; }
+    p { margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+    th { background: #f3f4f6; text-align: left; padding: 8px 12px; font-weight: 600; border: 1px solid #e5e7eb; }
+    td { padding: 8px 12px; border: 1px solid #e5e7eb; vertical-align: top; }
+    tr:nth-child(even) { background: #fafafa; }
+    code, pre { font-family: "JetBrains Mono", "Fira Code", monospace; font-size: 12px; }
+    pre { background: #1e1e2e; color: #cdd6f4; padding: 16px; border-radius: 8px; overflow-x: auto; margin: 12px 0; white-space: pre-wrap; }
+    .meta { color: #6b7280; font-size: 13px; margin-bottom: 24px; }
+    .meta span { margin-right: 24px; }
+    .severity { display: inline-block; padding: 2px 8px; border-radius: 4px; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .sev-critical { background: #fee2e2; color: #991b1b; }
+    .sev-high     { background: #ffedd5; color: #9a3412; }
+    .sev-medium   { background: #fef9c3; color: #854d0e; }
+    .sev-low      { background: #dbeafe; color: #1e40af; }
+    .sev-informational { background: #f3f4f6; color: #374151; }
+    .finding-card { border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px 24px; margin-bottom: 24px; }
+    .finding-card .header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .finding-card .header h3 { margin: 0; font-size: 15px; }
+    .finding-number { font-size: 11px; font-weight: 600; color: #6b7280; background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 4px; }
+    a { color: #2563eb; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .footer { margin-top: 48px; padding-top: 16px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 12px; text-align: center; }
+    @media print {
+      .container { padding: 20px; }
+      .finding-card { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+
+  <h1>Security Assessment Report</h1>
+  <h2 style="border:none;margin-top:4px;font-size:22px;">{{ target.name }}</h2>
+  <div class="meta">
+    <span><strong>Platform:</strong> {{ target.platform or "Private" }}</span>
+    <span><strong>Date:</strong> {{ report_date }}</span>
+    <span><strong>Findings:</strong> {{ findings | length }}</span>
+    {% if target.program_url %}<span><strong>Program:</strong> <a href="{{ target.program_url }}">{{ target.program_url }}</a></span>{% endif %}
+  </div>
+
+  <h2>Executive Summary</h2>
+  <div style="background:#f9fafb;border-left:4px solid #2563eb;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;">
+    <p>{{ executive_summary | replace('\n', '<br>') }}</p>
+  </div>
+
+  <h2>Findings Summary</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Severity</th><th>Title</th><th>Vuln Class</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for f in findings %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td><span class="severity sev-{{ f.severity }}">{{ f.severity }}</span></td>
+        <td>{{ f.title }}</td>
+        <td>{{ f.vuln_class }}</td>
+        <td>{{ f.status }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Severity Breakdown</h2>
+  <table style="max-width:300px;">
+    <thead><tr><th>Severity</th><th>Count</th></tr></thead>
+    <tbody>
+      <tr><td><span class="severity sev-critical">Critical</span></td><td>{{ findings | selectattr('severity', 'equalto', 'critical') | list | length }}</td></tr>
+      <tr><td><span class="severity sev-high">High</span></td><td>{{ findings | selectattr('severity', 'equalto', 'high') | list | length }}</td></tr>
+      <tr><td><span class="severity sev-medium">Medium</span></td><td>{{ findings | selectattr('severity', 'equalto', 'medium') | list | length }}</td></tr>
+      <tr><td><span class="severity sev-low">Low</span></td><td>{{ findings | selectattr('severity', 'equalto', 'low') | list | length }}</td></tr>
+      <tr><td><span class="severity sev-informational">Info</span></td><td>{{ findings | selectattr('severity', 'equalto', 'informational') | list | length }}</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Detailed Findings</h2>
+
+  {% for f in findings %}
+  <div class="finding-card">
+    <div class="header">
+      <span class="finding-number">#{{ loop.index }}</span>
+      <span class="severity sev-{{ f.severity }}">{{ f.severity }}</span>
+      <h3>{{ f.title }}</h3>
+    </div>
+
+    <table style="margin-bottom:16px;">
+      <tr><th style="width:150px;">Field</th><th>Value</th></tr>
+      <tr><td>Vuln Class</td><td>{{ f.vuln_class }}</td></tr>
+      <tr><td>Status</td><td>{{ f.status }}</td></tr>
+      <tr><td>Affected URL</td><td><code>{{ f.url }}</code></td></tr>
+      {% if f.parameter %}<tr><td>Parameter</td><td><code>{{ f.parameter }}</code></td></tr>{% endif %}
+      {% if f.cvss and f.cvss.score %}<tr><td>CVSS Score</td><td>{{ f.cvss.score }} &mdash; <code>{{ f.cvss.vector_string }}</code></td></tr>{% endif %}
+    </table>
+
+    <h4>Description</h4>
+    <p>{{ f.description or "<em>No description provided.</em>" }}</p>
+
+    <h4>Impact</h4>
+    <p>{{ f.impact or "<em>No impact statement provided.</em>" }}</p>
+
+    {% if f.reproduction_steps %}
+    <h4>Reproduction Steps</h4>
+    <ol>
+      {% for step in f.reproduction_steps %}<li>{{ step }}</li>{% endfor %}
+    </ol>
+    {% endif %}
+
+    {% if f.evidence %}
+    <h4>Evidence</h4>
+    {% for ev in f.evidence %}
+    <p><strong>{{ ev.kind | capitalize }}{% if ev.caption %}: {{ ev.caption }}{% endif %}</strong></p>
+    <pre>{{ ev.content }}</pre>
+    {% endfor %}
+    {% endif %}
+
+    <h4>Remediation</h4>
+    <p>{{ f.remediation or "<em>No remediation provided.</em>" }}</p>
+
+    {% if f.references %}
+    <h4>References</h4>
+    <ul>
+      {% for ref in f.references %}<li><a href="{{ ref }}" target="_blank">{{ ref }}</a></li>{% endfor %}
+    </ul>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  <div class="footer">Generated by Mewtwo &mdash; {{ report_date }}</div>
+</div>
+</body>
+</html>
