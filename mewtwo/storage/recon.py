@@ -78,7 +78,9 @@ class ReconRepository(BaseRepository):
             "parameters_json": json.dumps(url.parameters),
             "forms_json": json.dumps(url.forms),
             "interesting_headers_json": json.dumps(url.interesting_headers),
-        }, pk="id")
+            "source": url.source,
+            "discovered_at": _ser(url.discovered_at),
+        }, pk="id", alter=True)
 
     def urls_for(self, target_id: str) -> list[dict]:
         return [

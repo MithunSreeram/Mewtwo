@@ -14,6 +14,7 @@ from .ports import scan_ports
 from .tech import fingerprint_url
 from .crawler import crawl
 from .js_analyzer import analyze_page_js
+from .wayback import fetch_wayback_urls
 
 
 async def run_full_recon(
@@ -26,14 +27,14 @@ async def run_full_recon(
 ) -> dict:
     """Run all recon steps. Returns summary counts dict."""
     if steps is None:
-        steps = {"subdomains", "ports", "tech", "urls", "js"}
+        steps = {"subdomains", "ports", "tech", "urls", "js", "wayback"}
 
     db = get_db(db_path)
     repo = ReconRepository(db)
     domain = target.slug.replace("-", ".")  # Best-effort; callers should pass root domain
 
     summary = {
-        "subdomains": 0, "ports": 0, "technologies": 0, "urls": 0, "js_secrets": 0
+        "subdomains": 0, "ports": 0, "technologies": 0, "urls": 0, "js_secrets": 0, "wayback_urls": 0
     }
 
     # 1. Subdomain enum
@@ -89,7 +90,16 @@ async def run_full_recon(
         summary["urls"] = len(urls)
         success(f"URLs: {len(urls)} discovered")
 
-    # 5. JS analysis
+    # 5. Wayback Machine URL harvesting
+    if "wayback" in steps:
+        wb_urls = await fetch_wayback_urls(target.id, domain, include_subdomains=True)
+        for u in wb_urls:
+            repo.upsert_url(u)
+        summary["wayback_urls"] = len(wb_urls)
+        if wb_urls:
+            success(f"Wayback Machine: {len(wb_urls)} historical URLs")
+
+    # 6. JS analysis
     if "js" in steps:
         all_secrets = []
         alive_subs = repo.subdomains_for(target.id)

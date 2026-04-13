@@ -32,7 +32,7 @@ def recon_group():
 @recon_group.command("run")
 @click.option("--domain", "-d", help="Root domain to recon (defaults to target slug)")
 @click.option("--only", multiple=True,
-              type=click.Choice(["subdomains", "ports", "tech", "urls", "js"]))
+              type=click.Choice(["subdomains", "ports", "tech", "urls", "js", "wayback"]))
 @click.option("--passive-only", is_flag=True, help="Skip active enumeration tools")
 @click.option("--no-ai", is_flag=True, help="Skip AI analysis pass")
 def run_recon(domain, only, passive_only, no_ai):
@@ -201,6 +201,43 @@ def js_cmd(url):
         table.add_row(s.secret_type, s.value[:60], s.confidence, s.source_url[:40])
     console.print(table)
     success(f"{len(secrets)} items saved.")
+
+
+@recon_group.command("wayback")
+@click.option("--domain", "-d", required=True, help="Domain to query")
+@click.option("--no-subdomains", is_flag=True, help="Only query exact domain, not *.domain")
+@click.option("--limit", default=10000, show_default=True, help="Max URLs to fetch")
+def wayback_cmd(domain, no_subdomains, limit):
+    """Harvest historical URLs from the Wayback Machine."""
+    from .wayback import fetch_wayback_urls
+
+    ws, db, target_row = _get_workspace_and_target()
+    repo = ReconRepository(db)
+
+    urls = asyncio.run(fetch_wayback_urls(
+        target_row["id"], domain,
+        include_subdomains=not no_subdomains,
+        limit=limit,
+    ))
+    for u in urls:
+        repo.upsert_url(u)
+
+    if not urls:
+        info("No historical URLs found.")
+        return
+
+    table = Table("URL", "Status", "Params", "Date", title=f"Wayback URLs — {domain}")
+    for u in urls[:60]:
+        table.add_row(
+            u.url[:80],
+            str(u.status_code or "—"),
+            str(len(u.parameters)),
+            u.discovered_at.strftime("%Y-%m-%d") if u.discovered_at else "—",
+        )
+    console.print(table)
+    if len(urls) > 60:
+        console.print(f"[dim]... and {len(urls) - 60} more[/dim]")
+    success(f"{len(urls)} historical URLs saved.")
 
 
 @recon_group.command("show")

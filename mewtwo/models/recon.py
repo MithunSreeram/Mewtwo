@@ -48,6 +48,8 @@ class DiscoveredURL(BaseModel):
     parameters: list[str] = Field(default_factory=list)
     forms: list[dict] = Field(default_factory=list)
     interesting_headers: dict = Field(default_factory=dict)
+    source: str = "crawler"                                    # crawler | wayback
+    discovered_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class JSSecret(BaseModel):
