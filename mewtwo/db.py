@@ -33,6 +33,7 @@ def _ensure_schema(db: sqlite_utils.Database) -> None:
             "slug": str,
             "platform": str,
             "program_url": str,
+            "root_domain": str,
             "notes": str,
             "created_at": str,
             "updated_at": str,

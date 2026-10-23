@@ -33,13 +33,35 @@ def hunt_group():
 @click.option("--vector-id", help="Hunt a specific vector by ID prefix")
 @click.option("--checks", "check_names", help="Comma-separated check names to run")
 @click.option("--no-ai", is_flag=True, help="Disable AI triage")
-def run_hunt_cmd(category, vector_id, check_names, no_ai):
+@click.option("--tier", type=click.Choice(["safe", "normal", "aggressive"]),
+              default="normal", help="Payload safety tier (default: normal)")
+@click.option("--rate", type=float, default=None,
+              help="Max requests/second (default from MEWTWO_RATE_LIMIT, 0=unlimited)")
+@click.option("--no-scope-enforce", is_flag=True,
+              help="Disable request-time scope enforcement (NOT recommended)")
+@click.option("--auth-cookie", default=None, help="Cookie header for authenticated scan")
+@click.option("--auth-bearer", default=None, help="Bearer token for authenticated scan")
+@click.option("--auth-header", default=None, help="Extra auth header 'Name: value'")
+def run_hunt_cmd(category, vector_id, check_names, no_ai, tier, rate,
+                 no_scope_enforce, auth_cookie, auth_bearer, auth_header):
     """Hunt all unchecked attack vectors."""
     from .runner import run_hunt
+    from .safety import SafetyTier
+    from ...storage.targets import ScopeRepository
 
     ws, db, target_row = _get_workspace_and_db()
 
     checks_list = [c.strip() for c in check_names.split(",")] if check_names else None
+
+    # Gather in-scope patterns for request-time enforcement.
+    scope_rows = ScopeRepository(db).for_target(target_row["id"])
+    scope_patterns = [r["pattern"] for r in scope_rows if r.get("scope_type") == "in_scope"]
+    if not scope_patterns and not no_scope_enforce:
+        info("No in-scope patterns defined — scope enforcement is a no-op. "
+             "Add some with [bold]mewtwo scope add '*.domain'[/bold].")
+
+    resolved_rate = rate if rate is not None else config.rate_limit()
+    auth = config.build_auth(auth_cookie, auth_bearer, auth_header)
 
     findings = asyncio.run(run_hunt(
         target_id=target_row["id"],
@@ -49,6 +71,11 @@ def run_hunt_cmd(category, vector_id, check_names, no_ai):
         vector_id=vector_id,
         check_names=checks_list,
         use_ai=not no_ai,
+        tier=SafetyTier(tier),
+        scope_patterns=scope_patterns,
+        rate=resolved_rate,
+        auth=auth,
+        enforce_scope=not no_scope_enforce,
     ))
 
     if findings:
@@ -111,6 +138,44 @@ def payload_cmd(vuln_class, use_ai, url, param):
                 console.print(f"  {p}")
         except Exception as e:
             error(f"AI payload generation failed: {e}")
+
+
+@hunt_group.command("nuclei")
+@click.option("--severity", help="Comma-separated nuclei severities (e.g. critical,high)")
+@click.option("--target", "targets", multiple=True, help="Explicit target URL(s); repeatable")
+def nuclei_cmd(severity, targets):
+    """Run the nuclei scanner against alive hosts and import results as findings."""
+    from .nuclei import run_nuclei, nuclei_available
+    from ...storage.recon import ReconRepository
+    from ...storage.findings import FindingRepository
+
+    if not nuclei_available():
+        error("nuclei not found on PATH. Install: "
+              "https://github.com/projectdiscovery/nuclei")
+        raise SystemExit(1)
+
+    ws, db, target_row = _get_workspace_and_db()
+    recon = ReconRepository(db)
+    findings_repo = FindingRepository(db)
+
+    scan_targets = list(targets)
+    if not scan_targets:
+        subs = recon.subdomains_for(target_row["id"])
+        scan_targets = [f"https://{s['hostname']}" for s in subs if s.get("is_alive")]
+
+    if not scan_targets:
+        info("No alive targets. Run recon first or pass --target.")
+        return
+
+    findings = asyncio.run(run_nuclei(target_row["id"], scan_targets, severities=severity))
+    for f in findings:
+        findings_repo.upsert(f)
+
+    if findings:
+        t = Table("Severity", "Title", "URL")
+        for f in findings:
+            t.add_row(f.severity.value, f.title[:50], f.url[:50])
+        console.print(t)
 
 
 @hunt_group.command("ask")

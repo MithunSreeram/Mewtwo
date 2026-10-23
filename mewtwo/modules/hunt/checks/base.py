@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from ..safety import SafetyTier
+
 if TYPE_CHECKING:
     from ....models.surface import AttackVector
     from ....modules.ai.client import AIClient
@@ -36,6 +38,10 @@ class BaseCheck(ABC):
     references: list[str] = []
     # Categories this check applies to (from VectorCategory values)
     applicable_categories: list[str] = []
+    # If True, the check is only run in aggressive mode (noisy/destructive probing).
+    aggressive_only: bool = False
+    # Active safety tier — set by the runner before run(); checks filter payloads by it.
+    tier: SafetyTier = SafetyTier.NORMAL
 
     @abstractmethod
     async def run(

@@ -35,10 +35,11 @@ def recon_group():
               type=click.Choice(["subdomains", "ports", "tech", "urls", "js", "wayback"]))
 @click.option("--passive-only", is_flag=True, help="Skip active enumeration tools")
 @click.option("--no-ai", is_flag=True, help="Skip AI analysis pass")
-def run_recon(domain, only, passive_only, no_ai):
-    """Run all recon steps against the active target."""
+@click.option("--force", is_flag=True, help="Redo all steps, ignoring prior checkpoints")
+def run_recon(domain, only, passive_only, no_ai, force):
+    """Run all recon steps against the active target (resumable by default)."""
     from ...models.target import Target
-    from .runner import run_full_recon
+    from .runner import run_full_recon, clear_checkpoints
 
     ws, db, target_row = _get_workspace_and_target()
 
@@ -55,6 +56,9 @@ def run_recon(domain, only, passive_only, no_ai):
     scope_patterns = [r["pattern"] for r in scope_rows] or [f"*.{root_domain}", root_domain]
 
     steps = set(only) if only else None
+    if force:
+        clear_checkpoints(db, target.id)
+        info("Cleared recon checkpoints — running all steps fresh.")
     info(f"Starting recon for [bold]{target.name}[/bold] ({root_domain})")
 
     summary = asyncio.run(run_full_recon(
@@ -64,6 +68,7 @@ def run_recon(domain, only, passive_only, no_ai):
         steps=steps,
         passive_only=passive_only,
         use_ai=not no_ai,
+        resume=not force,
     ))
 
     console.print("\n[bold]Recon Summary:[/bold]")
@@ -238,6 +243,87 @@ def wayback_cmd(domain, no_subdomains, limit):
     if len(urls) > 60:
         console.print(f"[dim]... and {len(urls) - 60} more[/dim]")
     success(f"{len(urls)} historical URLs saved.")
+
+
+@recon_group.command("params")
+@click.argument("url")
+@click.option("--save", is_flag=True, help="Merge discovered params into the stored URL row")
+def params_cmd(url, save):
+    """Discover hidden/unlinked query parameters via reflection."""
+    from .param_miner import discover_params
+
+    ws, db, target_row = _get_workspace_and_target()
+    repo = ReconRepository(db)
+
+    found = asyncio.run(discover_params(url))
+    if not found:
+        info("No reflected parameters discovered.")
+        return
+
+    table = Table("Parameter", title=f"Discovered Parameters — {url}")
+    for p in found:
+        table.add_row(p)
+    console.print(table)
+    success(f"{len(found)} parameter(s) discovered.")
+
+    if save:
+        # Merge into an existing URL row if present, else create one.
+        existing = [u for u in repo.urls_for(target_row["id"]) if u["url"] == url]
+        from ...models.recon import DiscoveredURL
+        if existing:
+            row = existing[0]
+            merged = sorted(set(row.get("parameters", [])) | set(found))
+            db["urls"].update(row["id"], {"parameters_json": __import__("json").dumps(merged)})
+        else:
+            repo.upsert_url(DiscoveredURL(
+                target_id=target_row["id"], url=url, parameters=found, source="param_miner",
+            ))
+        success("Saved to URL store (feeds surface mapping).")
+
+
+@recon_group.command("favicon")
+@click.argument("url")
+def favicon_cmd(url):
+    """Compute the Shodan-style favicon hash for infrastructure pivoting."""
+    from .favicon import fetch_favicon_hash, identify
+
+    result = asyncio.run(fetch_favicon_hash(url))
+    if not result:
+        info("No favicon found or fetch failed.")
+        return
+    hash_value, favicon_url = result
+    product = identify(hash_value)
+    console.print(f"[bold]Favicon:[/bold] {favicon_url}")
+    console.print(f"[bold]mmh3 hash:[/bold] [info]{hash_value}[/info]")
+    if product:
+        console.print(f"[bold]Known product:[/bold] [yellow]{product}[/yellow]")
+    console.print(f"\n[dim]Pivot on Shodan:[/dim] http.favicon.hash:{hash_value}")
+
+
+@recon_group.command("takeover")
+def takeover_cmd():
+    """Scan alive subdomains for dangling CNAMEs (subdomain takeover candidates)."""
+    from .dns_intel import find_takeover_candidates
+
+    ws, db, target_row = _get_workspace_and_target()
+    repo = ReconRepository(db)
+    subs = repo.subdomains_for(target_row["id"])
+    hostnames = [s["hostname"] for s in subs]
+    if not hostnames:
+        info("No subdomains yet. Run [bold]mewtwo recon subdomains -d <domain>[/bold] first.")
+        return
+
+    candidates = find_takeover_candidates(hostnames)
+    if not candidates:
+        info("No takeover candidates found (or dnspython not installed).")
+        return
+
+    table = Table("Hostname", "CNAME", "Service", title="Subdomain Takeover Candidates")
+    for c in candidates:
+        table.add_row(c["hostname"], c["cname"], f"[yellow]{c['service']}[/yellow]")
+    console.print(table)
+    success(f"{len(candidates)} candidate(s) — confirm the resource is unclaimed, "
+            f"then run [bold]mewtwo hunt[/bold] with the subdomain_takeover check.")
 
 
 @recon_group.command("show")

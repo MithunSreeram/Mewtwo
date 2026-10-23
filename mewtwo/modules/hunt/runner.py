@@ -13,8 +13,11 @@ from ...models.surface import AttackVector, VectorCategory
 from ...storage.findings import FindingRepository
 from ...storage.surface import SurfaceRepository
 from ...utils.console import console, info, success, warn
+from ...utils.throttle import AsyncRateLimiter
 from .checks import ALL_CHECKS
 from .checks.base import BaseCheck, FindingDraft
+from .netguard import ScopeRateLimitTransport
+from .safety import SafetyTier, allow_check
 
 
 async def run_hunt(
@@ -25,6 +28,11 @@ async def run_hunt(
     vector_id: str | None = None,
     check_names: list[str] | None = None,
     use_ai: bool = True,
+    tier: SafetyTier = SafetyTier.NORMAL,
+    scope_patterns: list[str] | None = None,
+    rate: float = 0.0,
+    auth: tuple[dict, dict] | None = None,
+    enforce_scope: bool = True,
 ) -> list[Finding]:
     """Run hunt checks against attack vectors. Returns confirmed/draft findings."""
     db = get_db(db_path)
@@ -47,10 +55,14 @@ async def run_hunt(
 
     info(f"Hunting {len(unchecked)} unchecked vector(s)...")
 
-    # Select checks
+    # Select checks — honour explicit names, then filter by safety tier.
     checks_to_run: list[type[BaseCheck]] = ALL_CHECKS
     if check_names:
         checks_to_run = [c for c in ALL_CHECKS if c.name in check_names]
+    skipped = [c.name for c in checks_to_run if not allow_check(c, tier)]
+    checks_to_run = [c for c in checks_to_run if allow_check(c, tier)]
+    if skipped:
+        info(f"Tier '{tier.value}' skips aggressive check(s): {', '.join(skipped)}")
 
     ai = None
     if use_ai:
@@ -62,11 +74,27 @@ async def run_hunt(
 
     all_findings: list[Finding] = []
 
+    # Build scope + rate-limit guarded transport and merge any auth material.
+    limiter = AsyncRateLimiter(rate) if rate and rate > 0 else None
+    transport = ScopeRateLimitTransport(
+        httpx.AsyncHTTPTransport(verify=False),
+        scope_patterns=scope_patterns or [],
+        limiter=limiter,
+        enforce_scope=enforce_scope,
+    )
+    auth_headers, auth_cookies = auth or ({}, {})
+    client_headers = {"User-Agent": "Mozilla/5.0", **auth_headers}
+    if auth_headers or auth_cookies:
+        info("Authenticated scanning: injecting session into all requests")
+    if rate and rate > 0:
+        info(f"Rate limit: {rate} req/s")
+
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(15.0),
         follow_redirects=True,
-        verify=False,
-        headers={"User-Agent": "Mozilla/5.0"},
+        transport=transport,
+        headers=client_headers,
+        cookies=auth_cookies,
     ) as http:
         for vector_row in unchecked:
             vector = AttackVector(
@@ -92,6 +120,7 @@ async def run_hunt(
             vector_findings: list[Finding] = []
             for check_cls in applicable:
                 check = check_cls()
+                check.tier = tier
                 try:
                     drafts = await check.run(vector, http, ai)
                     for draft in drafts:

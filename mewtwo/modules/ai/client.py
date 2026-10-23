@@ -259,6 +259,34 @@ class AIClient:
         )
         return result.get("payloads", [])
 
+    def generate_poc(self, finding_dict: dict, db_path: Path | None = None) -> dict:
+        """Produce a reproducible, non-destructive proof-of-concept for a finding."""
+        from .prompts import poc_system, poc_user
+        from .tools import POC_TOOL
+
+        system = poc_system(self.workspace_context_snippet(db_path))
+        user_msg = poc_user(finding_dict)
+        return self.complete_with_tool(
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            tool=POC_TOOL,
+            max_tokens=4096,
+        )
+
+    def cluster_findings(self, findings: list[dict], db_path: Path | None = None) -> dict:
+        """Cluster duplicate findings. Returns {'clusters': [...]}"""
+        from .prompts import dedup_system, dedup_user
+        from .tools import DEDUP_TOOL
+
+        system = dedup_system(self.workspace_context_snippet(db_path))
+        user_msg = dedup_user(findings)
+        return self.complete_with_tool(
+            system=system,
+            messages=[{"role": "user", "content": user_msg}],
+            tool=DEDUP_TOOL,
+            max_tokens=4096,
+        )
+
     def ask(self, question: str, context: str = "", stream: bool = False):
         """Free-form question with optional workspace context."""
         from .prompts import ask_system

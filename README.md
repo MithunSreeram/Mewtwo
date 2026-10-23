@@ -247,6 +247,47 @@ mewtwo ai ask "What attack chains could link these findings?" --stream
 |----------|-------------|
 | `ANTHROPIC_API_KEY` | Required for all AI features |
 | `MEWTWO_HOME` | Override workspace directory (default: `~/.mewtwo`) |
+| `MEWTWO_RATE_LIMIT` | Max requests/second during hunting (default `0` = unlimited) |
+| `MEWTWO_AUTH_COOKIE` / `MEWTWO_AUTH_BEARER` / `MEWTWO_AUTH_HEADER` | Session material for authenticated scanning |
+
+---
+
+## Expansion features
+
+See [`docs/10-expansion.md`](docs/10-expansion.md) for full detail. Highlights:
+
+```bash
+# Safety tiers — destructive payloads stripped unless --tier aggressive
+mewtwo hunt run --tier safe|normal|aggressive
+
+# Request-time scope enforcement (on by default) + politeness throttle
+mewtwo hunt run --rate 10            # 10 req/s
+mewtwo hunt run --no-scope-enforce   # opt out (not recommended)
+
+# Authenticated scanning
+mewtwo hunt run --auth-cookie 'session=...' --auth-bearer '...'
+
+# New checks: subdomain_takeover, graphql, jwt, ssti, nosqli, csrf, race_condition
+mewtwo hunt checks
+
+# Recon additions
+mewtwo recon favicon https://host     # Shodan-style favicon hash
+mewtwo recon params https://host/ep   # hidden parameter discovery
+mewtwo recon takeover                 # dangling-CNAME takeover candidates
+
+# Nuclei integration (needs the nuclei binary on PATH)
+mewtwo hunt nuclei --severity critical,high
+
+# AI: proof-of-concept, dedup, bounded agentic hunt
+mewtwo ai poc <finding_id>
+mewtwo ai dedup --apply
+mewtwo ai hunt https://host/endpoint --yes
+
+# Resumable recon (skips completed steps; --force to redo)
+mewtwo recon run
+```
+
+Run the test suite with `pytest` (install dev deps: `pip install -e '.[dev]'`).
 
 ---
 

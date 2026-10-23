@@ -17,6 +17,32 @@ from .js_analyzer import analyze_page_js
 from .wayback import fetch_wayback_urls
 
 
+def _checkpoint_done(db, target_id: str, step: str) -> bool:
+    """Has this recon step already completed for the target? (resumable runs)"""
+    if "recon_checkpoints" not in db.table_names():
+        return False
+    rows = list(db["recon_checkpoints"].rows_where(
+        "target_id = ? AND step = ?", [target_id, step]
+    ))
+    return bool(rows)
+
+
+def _mark_checkpoint(db, target_id: str, step: str) -> None:
+    from datetime import datetime
+    db["recon_checkpoints"].upsert({
+        "id": f"{target_id}:{step}",
+        "target_id": target_id,
+        "step": step,
+        "completed_at": datetime.utcnow().isoformat(),
+    }, pk="id", alter=True)
+
+
+def clear_checkpoints(db, target_id: str) -> None:
+    """Wipe recon checkpoints so a run starts fresh."""
+    if "recon_checkpoints" in db.table_names():
+        db["recon_checkpoints"].delete_where("target_id = ?", [target_id])
+
+
 async def run_full_recon(
     target: Target,
     db_path: Path,
@@ -24,13 +50,27 @@ async def run_full_recon(
     steps: set[str] | None = None,
     passive_only: bool = False,
     use_ai: bool = True,
+    resume: bool = True,
 ) -> dict:
-    """Run all recon steps. Returns summary counts dict."""
+    """Run all recon steps. Returns summary counts dict.
+
+    With ``resume=True`` (default), steps already completed in a previous run are skipped —
+    so an interrupted recon can be re-run without redoing finished work.
+    """
     if steps is None:
         steps = {"subdomains", "ports", "tech", "urls", "js", "wayback"}
 
     db = get_db(db_path)
     repo = ReconRepository(db)
+
+    def _should_run(step: str) -> bool:
+        if step not in steps:
+            return False
+        if resume and _checkpoint_done(db, target.id, step):
+            info(f"Skipping '{step}' — already completed (use --force to redo)")
+            return False
+        return True
+
     domain = target.slug.replace("-", ".")  # Best-effort; callers should pass root domain
 
     summary = {
@@ -38,15 +78,16 @@ async def run_full_recon(
     }
 
     # 1. Subdomain enum
-    if "subdomains" in steps:
+    if _should_run("subdomains"):
         subs = await run_subdomain_enum(target.id, domain, passive_only=passive_only)
         for s in subs:
             repo.upsert_subdomain(s)
         summary["subdomains"] = len(subs)
         success(f"Subdomains: {len(subs)} discovered")
+        _mark_checkpoint(db, target.id, "subdomains")
 
     # 2. Port scanning alive subdomains
-    if "ports" in steps:
+    if _should_run("ports"):
         alive_subs = repo.subdomains_for(target.id)
         alive_hosts = [s["hostname"] for s in alive_subs if s.get("is_alive")][:10]
         all_ports = []
@@ -58,9 +99,10 @@ async def run_full_recon(
         summary["ports"] = len(all_ports)
         if all_ports:
             success(f"Ports: {len(all_ports)} open across {len(alive_hosts)} hosts")
+        _mark_checkpoint(db, target.id, "ports")
 
     # 3. Technology fingerprinting
-    if "tech" in steps:
+    if _should_run("tech"):
         alive_subs = repo.subdomains_for(target.id)
         alive_hosts = [s["hostname"] for s in alive_subs if s.get("is_alive")]
         all_techs = []
@@ -75,9 +117,10 @@ async def run_full_recon(
         summary["technologies"] = len(all_techs)
         if all_techs:
             success(f"Technologies: {len(all_techs)} fingerprinted")
+        _mark_checkpoint(db, target.id, "tech")
 
     # 4. URL crawling
-    if "urls" in steps:
+    if _should_run("urls"):
         seed = f"https://{domain}"
         urls = await crawl(
             target.id,
@@ -89,18 +132,20 @@ async def run_full_recon(
             repo.upsert_url(u)
         summary["urls"] = len(urls)
         success(f"URLs: {len(urls)} discovered")
+        _mark_checkpoint(db, target.id, "urls")
 
     # 5. Wayback Machine URL harvesting
-    if "wayback" in steps:
+    if _should_run("wayback"):
         wb_urls = await fetch_wayback_urls(target.id, domain, include_subdomains=True)
         for u in wb_urls:
             repo.upsert_url(u)
         summary["wayback_urls"] = len(wb_urls)
         if wb_urls:
             success(f"Wayback Machine: {len(wb_urls)} historical URLs")
+        _mark_checkpoint(db, target.id, "wayback")
 
     # 6. JS analysis
-    if "js" in steps:
+    if _should_run("js"):
         all_secrets = []
         alive_subs = repo.subdomains_for(target.id)
         alive_hosts = [s["hostname"] for s in alive_subs if s.get("is_alive")][:10]
@@ -112,5 +157,6 @@ async def run_full_recon(
         summary["js_secrets"] = len(all_secrets)
         if all_secrets:
             success(f"JS secrets/endpoints: {len(all_secrets)} found")
+        _mark_checkpoint(db, target.id, "js")
 
     return summary

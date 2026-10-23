@@ -8,6 +8,7 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 import httpx
 
 from .base import BaseCheck, FindingDraft
+from ..safety import filter_payloads
 
 _ERROR_PATTERNS = re.compile(
     r"sql syntax|mysql_fetch|ORA-\d{5}|sqlite_|pg_query|syntax error|unclosed quotation|"
@@ -45,9 +46,12 @@ class SQLiCheck(BaseCheck):
 
         parsed = urlparse(url)
 
+        # Strip destructive payloads (e.g. DROP TABLE) unless in aggressive tier.
+        error_payloads = filter_payloads(_ERROR_PAYLOADS, self.tier)
+
         for param in params[:5]:
             # Error-based probing
-            for payload in _ERROR_PAYLOADS:
+            for payload in error_payloads:
                 qs = parse_qs(parsed.query)
                 qs[param] = [payload]
                 test_url = urlunparse(parsed._replace(query=urlencode(qs, doseq=True)))

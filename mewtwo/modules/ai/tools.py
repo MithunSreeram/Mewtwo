@@ -166,6 +166,110 @@ PERSONALISED_PAYLOAD_TOOL = {
     },
 }
 
+POC_TOOL = {
+    "name": "report_poc",
+    "description": "Return a reproducible proof-of-concept for a confirmed finding.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "description": "One-line summary of what the PoC proves"},
+            "prerequisites": {"type": "string", "description": "Required state (auth, role, etc.)"},
+            "steps": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Ordered manual reproduction steps",
+            },
+            "curl_commands": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Copy-paste curl commands that demonstrate the issue",
+            },
+            "script": {
+                "type": "string",
+                "description": "Optional self-contained script (language noted in script_language)",
+            },
+            "script_language": {"type": "string"},
+            "expected_result": {"type": "string", "description": "What success looks like"},
+            "safety_notes": {
+                "type": "string",
+                "description": "Non-destructive guidance; never include data-destroying actions",
+            },
+        },
+        "required": ["summary", "steps", "curl_commands", "expected_result"],
+    },
+}
+
+DEDUP_TOOL = {
+    "name": "report_duplicate_clusters",
+    "description": "Group findings that are duplicates or the same root issue across endpoints.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "clusters": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "canonical_id": {
+                            "type": "string",
+                            "description": "ID of the finding to keep as the representative",
+                        },
+                        "duplicate_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "IDs that are duplicates of the canonical finding",
+                        },
+                        "reason": {"type": "string"},
+                        "root_cause": {"type": "string"},
+                    },
+                    "required": ["canonical_id", "duplicate_ids", "reason"],
+                },
+            }
+        },
+        "required": ["clusters"],
+    },
+}
+
+HTTP_REQUEST_TOOL = {
+    "name": "http_request",
+    "description": "Send a single HTTP request to the authorised target and get the response back.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "method": {"type": "string", "enum": ["GET", "POST", "PUT", "PATCH", "HEAD", "OPTIONS"]},
+            "url": {"type": "string", "description": "Full URL on the authorised target host only"},
+            "headers": {"type": "object", "description": "Optional request headers"},
+            "body": {"type": "string", "description": "Optional request body"},
+            "hypothesis": {"type": "string", "description": "What this request is testing"},
+        },
+        "required": ["method", "url"],
+    },
+}
+
+CONCLUDE_TOOL = {
+    "name": "conclude",
+    "description": "End the investigation with a verdict once enough evidence is gathered.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "is_vulnerable": {"type": "boolean"},
+            "vuln_class": {"type": "string"},
+            "severity": {
+                "type": "string",
+                "enum": ["critical", "high", "medium", "low", "informational"],
+            },
+            "title": {"type": "string"},
+            "summary": {"type": "string"},
+            "evidence": {"type": "string", "description": "Key request/response evidence"},
+            "confidence": {
+                "type": "string",
+                "enum": ["confirmed", "likely", "possible", "unlikely"],
+            },
+        },
+        "required": ["is_vulnerable", "summary", "confidence"],
+    },
+}
+
 CVSS_TOOL = {
     "name": "suggest_cvss",
     "description": "Suggest CVSS 3.1 vector components for a vulnerability.",

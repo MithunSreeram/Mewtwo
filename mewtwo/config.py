@@ -106,3 +106,62 @@ def timeout() -> int:
 
 def concurrency() -> int:
     return int(os.environ.get("MEWTWO_CONCURRENCY", "20"))
+
+
+def rate_limit() -> float:
+    """Max requests/second during active scanning. 0 = unlimited (default)."""
+    try:
+        return float(os.environ.get("MEWTWO_RATE_LIMIT", "0"))
+    except ValueError:
+        return 0.0
+
+
+# ---------------------------------------------------------------------------
+# Authenticated scanning
+# ---------------------------------------------------------------------------
+
+def auth_cookie() -> str | None:
+    """Raw Cookie header value, e.g. 'session=abc; csrf=def'."""
+    return os.environ.get("MEWTWO_AUTH_COOKIE") or None
+
+
+def auth_bearer() -> str | None:
+    """Bearer token (without the 'Bearer ' prefix)."""
+    return os.environ.get("MEWTWO_AUTH_BEARER") or None
+
+
+def auth_header() -> str | None:
+    """Arbitrary extra auth header as 'Name: value'."""
+    return os.environ.get("MEWTWO_AUTH_HEADER") or None
+
+
+def build_auth(
+    cookie: str | None = None,
+    bearer: str | None = None,
+    header: str | None = None,
+) -> tuple[dict, dict]:
+    """Build (headers, cookies) dicts from explicit args falling back to env.
+
+    Used for authenticated scanning — most IDOR/authorization bugs only surface
+    when requests carry a valid session.
+    """
+    headers: dict[str, str] = {}
+    cookies: dict[str, str] = {}
+
+    cookie_val = cookie or auth_cookie()
+    if cookie_val:
+        for part in cookie_val.split(";"):
+            if "=" in part:
+                k, v = part.split("=", 1)
+                cookies[k.strip()] = v.strip()
+
+    bearer_val = bearer or auth_bearer()
+    if bearer_val:
+        headers["Authorization"] = f"Bearer {bearer_val}"
+
+    header_val = header or auth_header()
+    if header_val and ":" in header_val:
+        name, value = header_val.split(":", 1)
+        headers[name.strip()] = value.strip()
+
+    return headers, cookies

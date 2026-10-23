@@ -9,6 +9,13 @@ from .info_disclosure import InfoDisclosureCheck
 from .rate_limit import RateLimitCheck
 from .path_traversal import PathTraversalCheck
 from .xxe import XXECheck
+from .subdomain_takeover import SubdomainTakeoverCheck
+from .graphql import GraphQLCheck
+from .jwt import JWTCheck
+from .ssti import SSTICheck
+from .nosqli import NoSQLiCheck
+from .csrf import CSRFCheck
+from .race_condition import RaceConditionCheck
 
 ALL_CHECKS = [
     IDORCheck,
@@ -22,4 +29,11 @@ ALL_CHECKS = [
     RateLimitCheck,
     PathTraversalCheck,
     XXECheck,
+    SubdomainTakeoverCheck,
+    GraphQLCheck,
+    JWTCheck,
+    SSTICheck,
+    NoSQLiCheck,
+    CSRFCheck,
+    RaceConditionCheck,
 ]

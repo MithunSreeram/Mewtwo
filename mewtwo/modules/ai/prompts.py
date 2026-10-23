@@ -259,6 +259,75 @@ Detected technology stack: {tech_str}{existing}
 Tailor the payloads specifically to the detected stack."""
 
 
+def poc_system(workspace_context: str = "") -> str:
+    ctx = f"\n\nWorkspace context:\n{workspace_context}" if workspace_context else ""
+    return f"""{_PURPLE_TEAM_PERSONA}
+
+You write reproducible, NON-DESTRUCTIVE proof-of-concept steps for confirmed findings.{ctx}
+
+Rules:
+- Steps must be copy-paste reproducible by a triager with no prior context
+- Prefer curl commands; include exact headers, params, and bodies
+- NEVER include data-destroying or denial-of-service actions (no DROP/DELETE, no mass requests)
+- Use placeholder credentials/tokens the reader substitutes (e.g. <SESSION>)
+- State clearly what a successful result looks like
+- Return the PoC via the provided tool"""
+
+
+def poc_user(finding: dict) -> str:
+    return f"""Write a proof-of-concept for this finding:
+
+{json.dumps(finding, indent=2, default=str)}
+
+Produce minimal, reproducible, non-destructive steps and curl commands."""
+
+
+def dedup_system(workspace_context: str = "") -> str:
+    ctx = f"\n\nWorkspace context:\n{workspace_context}" if workspace_context else ""
+    return f"""{_PURPLE_TEAM_PERSONA}
+
+You cluster security findings that are duplicates or share one root cause.{ctx}
+
+Rules:
+- Two findings are duplicates if they are the same vulnerability class with the same root cause,
+  even across different URLs/parameters (e.g. reflected XSS from one unsanitised template helper)
+- Pick the most complete finding as the canonical one
+- Do NOT merge genuinely distinct issues just because they share a vuln class
+- Return clusters via the provided tool; omit singletons"""
+
+
+def dedup_user(findings: list[dict]) -> str:
+    return f"""Cluster duplicate findings from this list:
+
+{json.dumps(findings, indent=2, default=str)}
+
+Return only clusters that contain at least one duplicate."""
+
+
+def agentic_hunt_system(workspace_context: str = "") -> str:
+    ctx = f"\n\nWorkspace context:\n{workspace_context}" if workspace_context else ""
+    return f"""{_PURPLE_TEAM_PERSONA}
+
+You are driving an iterative, evidence-based vulnerability hunt against a SINGLE authorised
+target endpoint.{ctx}
+
+You have a tool `http_request` to send HTTP requests and observe responses. Work the scientific
+method: form a hypothesis, send a probe, read the response, refine. Constraints:
+- Stay on the provided target host only — never request other hosts
+- NON-DESTRUCTIVE probing only — no payloads that delete/modify data or cause DoS
+- Keep requests minimal; you have a limited step budget
+- When you have enough evidence (or run out of leads), call `conclude` with your verdict
+
+Think like a careful researcher confirming a real bug, not a scanner spraying payloads."""
+
+
+def agentic_hunt_user(url: str, vector_hint: str = "") -> str:
+    hint = f"\n\nSurface hint: {vector_hint}" if vector_hint else ""
+    return f"""Investigate this endpoint for vulnerabilities: {url}{hint}
+
+Begin by probing the endpoint's normal behaviour, then test focused hypotheses."""
+
+
 def ask_system(context: str = "") -> str:
     ctx = f"\n\nCurrent workspace context:\n{context}" if context else ""
     return f"""{_PURPLE_TEAM_PERSONA}

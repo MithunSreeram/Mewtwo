@@ -2,7 +2,20 @@
 
 from __future__ import annotations
 
+import math
+
 from ...models.finding import CVSSVector
+
+
+def _roundup(value: float) -> float:
+    """CVSS 3.1 Roundup — round UP to one decimal place (spec Appendix A).
+
+    Plain round() is wrong here: e.g. 6.0067 must become 6.1, not 6.0.
+    """
+    int_input = round(value * 100000)
+    if int_input % 10000 == 0:
+        return int_input / 100000
+    return (math.floor(int_input / 10000) + 1) / 10
 
 
 # CVSS 3.1 metric weights
@@ -48,8 +61,8 @@ def calculate_cvss(v: CVSSVector) -> CVSSVector:
             raw = min(impact + exploitability, 10)
         else:
             raw = min(1.08 * (impact + exploitability), 10)
-        # Round up to 1 decimal
-        score = round(raw * 10) / 10
+        # CVSS 3.1 Roundup (NOT plain rounding) — see _roundup docstring.
+        score = _roundup(raw)
 
     vector_string = (
         f"CVSS:3.1/AV:{v.attack_vector}/AC:{v.attack_complexity}/"

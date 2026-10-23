@@ -251,3 +251,150 @@ def payloads_cmd(vuln_class, url, param):
             p.get("rationale", ""),
         )
     console.print(t)
+
+
+@ai_group.command("poc")
+@click.argument("finding_id")
+def poc_cmd(finding_id):
+    """Generate a reproducible, non-destructive PoC for a finding."""
+    from ...config import db_path, require_active_workspace
+    from ...db import get_db
+    from ...storage.findings import FindingRepository
+    from rich.panel import Panel
+    from rich.syntax import Syntax
+
+    ws = require_active_workspace()
+    db = get_db(db_path(ws))
+    client = _get_client()
+
+    targets = list(db["targets"].rows)
+    if not targets:
+        error("No target in workspace.")
+        return
+
+    repo = FindingRepository(db)
+    findings = repo.for_target(targets[0]["id"])
+    match = [f for f in findings if f.get("id", "").startswith(finding_id)]
+    if not match:
+        error(f"No finding matching id prefix '{finding_id}'.")
+        return
+    finding = match[0]
+
+    console.print(f"[info]Generating PoC for:[/info] {finding.get('title', '')}\n")
+    poc = client.generate_poc(finding, db_path(ws))
+    if not poc:
+        console.print("[dim]No PoC returned.[/dim]")
+        return
+
+    console.print(Panel(poc.get("summary", ""), title="Summary"))
+    if poc.get("prerequisites"):
+        console.print(f"[bold]Prerequisites:[/bold] {poc['prerequisites']}\n")
+    console.print("[bold]Steps:[/bold]")
+    for i, step in enumerate(poc.get("steps", []), 1):
+        console.print(f"  {i}. {step}")
+    if poc.get("curl_commands"):
+        console.print("\n[bold]curl:[/bold]")
+        for c in poc["curl_commands"]:
+            console.print(Syntax(c, "bash", theme="ansi_dark", word_wrap=True))
+    if poc.get("script"):
+        console.print(f"\n[bold]Script ({poc.get('script_language', 'text')}):[/bold]")
+        console.print(Syntax(poc["script"], poc.get("script_language", "text") or "text",
+                             theme="ansi_dark", word_wrap=True))
+    console.print(f"\n[bold]Expected result:[/bold] {poc.get('expected_result', '')}")
+    if poc.get("safety_notes"):
+        console.print(f"[dim]Safety: {poc['safety_notes']}[/dim]")
+
+
+@ai_group.command("dedup")
+@click.option("--apply", "apply_", is_flag=True,
+              help="Mark detected duplicates with status 'duplicate'")
+def dedup_cmd(apply_):
+    """Cluster duplicate findings across endpoints with AI."""
+    from ...config import db_path, require_active_workspace
+    from ...db import get_db
+    from ...storage.findings import FindingRepository
+    from ...utils.console import info, success
+    from rich.table import Table
+
+    ws = require_active_workspace()
+    db = get_db(db_path(ws))
+    client = _get_client()
+
+    targets = list(db["targets"].rows)
+    if not targets:
+        error("No target in workspace.")
+        return
+
+    repo = FindingRepository(db)
+    findings = repo.for_target(targets[0]["id"])
+    if len(findings) < 2:
+        info("Need at least 2 findings to deduplicate.")
+        return
+
+    slim = [
+        {"id": f.get("id", ""), "title": f.get("title", ""),
+         "vuln_class": f.get("vuln_class", ""), "severity": f.get("severity", ""),
+         "url": f.get("url", ""), "parameter": f.get("parameter", "")}
+        for f in findings
+    ]
+    result = client.cluster_findings(slim, db_path(ws))
+    clusters = result.get("clusters", [])
+    if not clusters:
+        success("No duplicate clusters found.")
+        return
+
+    for i, cluster in enumerate(clusters, 1):
+        t = Table("Role", "Finding ID", "Reason", title=f"Cluster {i}: {cluster.get('root_cause', '')}")
+        t.add_row("canonical", cluster.get("canonical_id", "")[:8], cluster.get("reason", ""))
+        for dup in cluster.get("duplicate_ids", []):
+            t.add_row("duplicate", dup[:8], "")
+        console.print(t)
+
+    if apply_:
+        count = 0
+        for cluster in clusters:
+            for dup in cluster.get("duplicate_ids", []):
+                repo.update_status(dup, "duplicate")
+                count += 1
+        success(f"Marked {count} finding(s) as duplicate.")
+    else:
+        info("Re-run with [bold]--apply[/bold] to mark duplicates.")
+
+
+@ai_group.command("hunt")
+@click.argument("url")
+@click.option("--hint", default="", help="Surface hint to steer the investigation")
+@click.option("--max-steps", default=12, show_default=True)
+@click.option("--rate", type=float, default=None, help="Max requests/second")
+@click.option("--yes", is_flag=True, help="Confirm you are authorised to actively test this target")
+def agentic_hunt_cmd(url, hint, max_steps, rate, yes):
+    """Agentic, evidence-based hunt of a single endpoint (active; aggressive-tier)."""
+    import asyncio
+    from ...config import rate_limit, build_auth
+    from ...utils.console import info, warn
+
+    if not yes:
+        warn("This actively sends requests to the target. Only proceed if you are authorised.")
+        warn("Re-run with [bold]--yes[/bold] to confirm.")
+        return
+
+    client = _get_client()
+    from .agent import agentic_hunt
+
+    resolved_rate = rate if rate is not None else rate_limit()
+    info(f"Starting agentic hunt on {url} (budget: {max_steps} steps)\n")
+
+    conclusion, transcript = asyncio.run(agentic_hunt(
+        client, url, vector_hint=hint,
+        rate=resolved_rate, max_steps=max_steps, auth=build_auth(),
+    ))
+
+    console.print(f"\n[bold]Probes sent:[/bold] {len(transcript)}")
+    verdict = "VULNERABLE" if conclusion.get("is_vulnerable") else "no confirmed issue"
+    console.print(f"[bold]Verdict:[/bold] {verdict} "
+                  f"(confidence: {conclusion.get('confidence', '?')})")
+    if conclusion.get("title"):
+        console.print(f"[bold]Title:[/bold] {conclusion['title']}")
+    console.print(f"[bold]Summary:[/bold] {conclusion.get('summary', '')}")
+    if conclusion.get("evidence"):
+        console.print(f"\n[bold]Evidence:[/bold]\n{conclusion['evidence']}")

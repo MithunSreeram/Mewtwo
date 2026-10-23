@@ -67,16 +67,13 @@ def init_cmd(name, platform, program_url, domain):
         program_url=program_url,
     )
 
-    # Store root domain hint on the target row
+    # Store root domain hint on the target row (alter=True tolerates older DBs
+    # created before root_domain was part of the schema).
     repo = TargetRepository(db)
     repo.upsert(target)
-
-    # Patch: add root_domain column if needed and store
-    try:
-        db["targets"].add_column("root_domain", str, not_null=False)
-    except Exception:
-        pass
-    db["targets"].update(target.id, {"root_domain": domain or slug})
+    db["targets"].upsert(
+        {"id": target.id, "root_domain": domain or slug}, pk="id", alter=True
+    )
 
     config.set_active_workspace(slug)
     success(f"Workspace created: [bold]{slug}[/bold]")

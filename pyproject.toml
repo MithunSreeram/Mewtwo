@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "mewtwo"
@@ -36,9 +36,15 @@ pdf = [
 tui = [
     "textual>=0.50.0",
 ]
+recon = [
+    "dnspython>=2.4",   # CNAME resolution for subdomain-takeover detection
+    "mmh3>=4.0",        # faster favicon hashing (pure-Python fallback exists)
+]
 all = [
     "weasyprint>=60.0",
     "textual>=0.50.0",
+    "dnspython>=2.4",
+    "mmh3>=4.0",
 ]
 
 [tool.setuptools.packages.find]
