@@ -40,11 +40,17 @@ recon = [
     "dnspython>=2.4",   # CNAME resolution for subdomain-takeover detection
     "mmh3>=4.0",        # faster favicon hashing (pure-Python fallback exists)
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+]
 all = [
     "weasyprint>=60.0",
     "textual>=0.50.0",
     "dnspython>=2.4",
     "mmh3>=4.0",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
 ]
 
 [tool.setuptools.packages.find]
@@ -54,6 +60,7 @@ include = ["mewtwo*"]
 [tool.setuptools.package-data]
 "mewtwo.modules.report" = ["templates/**/*"]
 "mewtwo.modules.hunt" = ["payloads/*"]
+"mewtwo.web" = ["static/*"]
 
 [tool.ruff]
 line-length = 100

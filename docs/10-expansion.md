@@ -116,6 +116,28 @@ and the new checks against mocked HTTP (`pytest-httpx`). Run with `pytest`.
 
 ---
 
+## 9. Local web dashboard — `mewtwo/web/`
+
+`mewtwo serve` (needs `pip install 'mewtwo[web]'`) launches a FastAPI app bound to
+`127.0.0.1`:
+
+* **Read API** — `/api/status`, `/api/findings` (+ `/{id}` detail with evidence),
+  `/api/subdomains`, `/api/urls`, `/api/vectors`, `/api/scope`, `/api/workspaces`.
+* **Job API** — `POST /api/jobs/{recon,surface,hunt}` run the real runners as asyncio
+  background tasks; one job at a time.
+* **WebSocket `/ws`** — the runners' `on_progress` callback (added to `run_full_recon` and
+  `run_hunt`) fans per-step / per-finding events out to all connected browsers, so the UI
+  updates live without polling.
+* **Frontend** — `web/static/` (vanilla HTML/CSS/JS, no build step, no CDNs): dark dashboard
+  with stat cards, tabbed tables, a finding detail drawer, workspace switcher, and run
+  controls (tier, rate, scope, auth toggles).
+
+**Security:** localhost-bind by default (a non-localhost `--host` prints a warning). Secrets
+never reach the browser — `/api/health` reports only booleans (`ai_configured`,
+`auth_configured`), and hunt auth is read from the server env, never accepted over HTTP.
+
+---
+
 ## Needs API keys (not yet wired)
 
 Shodan / Censys / VirusTotal / AlienVault OTX passive sources and GitHub/Google dorking all

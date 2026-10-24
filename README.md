@@ -252,6 +252,22 @@ mewtwo ai ask "What attack chains could link these findings?" --stream
 
 ---
 
+## Web dashboard (localhost)
+
+```bash
+pip install 'mewtwo[web]'
+mewtwo serve                 # → http://127.0.0.1:8000
+```
+
+An interactive dark-themed dashboard bound to `127.0.0.1`: live stat cards, findings
+browser with a detail drawer (evidence, repro, references), attack-surface/subdomain/URL
+tables, workspace switcher, and buttons to launch **recon / surface / hunt** as background
+jobs whose progress streams live over a WebSocket. Secrets (`ANTHROPIC_API_KEY`, auth
+cookies/tokens) stay server-side and are never sent to the browser. Keep the bind on
+localhost — exposing it hands anyone on the network a scan launcher.
+
+---
+
 ## Expansion features
 
 See [`docs/10-expansion.md`](docs/10-expansion.md) for full detail. Highlights:

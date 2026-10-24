@@ -340,6 +340,28 @@ def import_cmd(archive, overwrite, no_activate):
         success(f"Active workspace → [bold]{slug}[/bold]")
 
 
+@cli.command("serve")
+@click.option("--host", default="127.0.0.1", show_default=True,
+              help="Bind address. Keep this on localhost.")
+@click.option("--port", default=8000, show_default=True)
+def serve_cmd(host, port):
+    """Launch the local web dashboard (requires: pip install 'mewtwo[web]')."""
+    try:
+        import uvicorn
+        from .web.app import create_app
+    except ImportError:
+        error("Web UI dependencies missing. Install with: pip install 'mewtwo[web]'")
+        raise SystemExit(1)
+
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        warn(
+            f"Binding to {host} exposes the dashboard beyond localhost. It can launch scans, "
+            f"inject your stored session, and reveal findings. Only do this on a trusted network."
+        )
+    success(f"Mewtwo dashboard → [bold]http://{host}:{port}[/bold]  (Ctrl-C to stop)")
+    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+
+
 @cli.command("dashboard")
 def dashboard_cmd():
     """Launch the interactive TUI dashboard (requires: pip install 'mewtwo[tui]')."""

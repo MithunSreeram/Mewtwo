@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mewtwo</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">🧬</span>
+      <span class="brand-name">Mewtwo</span>
+      <span class="brand-sub">bug bounty dashboard · localhost</span>
+    </div>
+    <div class="top-right">
+      <label class="ws-pick">
+        workspace
+        <select id="ws-select"></select>
+      </label>
+      <span id="badge-ai" class="badge" title="AI features">AI</span>
+      <span id="badge-auth" class="badge" title="Authenticated scanning">auth</span>
+      <span id="conn" class="conn-dot" title="live connection">●</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="content">
+      <!-- stat cards -->
+      <div class="stats" id="stats"></div>
+
+      <!-- target line -->
+      <div class="target-line" id="target-line"></div>
+
+      <!-- tabs -->
+      <nav class="tabs" id="tabs">
+        <button data-tab="overview" class="tab active">Overview</button>
+        <button data-tab="subdomains" class="tab">Subdomains</button>
+        <button data-tab="urls" class="tab">URLs</button>
+        <button data-tab="vectors" class="tab">Attack Surface</button>
+        <button data-tab="findings" class="tab">Findings</button>
+      </nav>
+
+      <div class="panel" id="panel"></div>
+    </section>
+
+    <aside class="sidebar">
+      <div class="controls">
+        <h3>Run</h3>
+        <div class="job-status" id="job-status">idle</div>
+
+        <div class="ctl-group">
+          <button class="btn" id="btn-recon">Recon</button>
+          <label class="chk"><input type="checkbox" id="recon-passive"> passive only</label>
+          <label class="chk"><input type="checkbox" id="recon-force"> force (ignore checkpoints)</label>
+        </div>
+
+        <div class="ctl-group">
+          <button class="btn" id="btn-surface">Map surface</button>
+        </div>
+
+        <div class="ctl-group">
+          <button class="btn btn-accent" id="btn-hunt">Hunt</button>
+          <label class="sel">tier
+            <select id="hunt-tier">
+              <option value="safe">safe</option>
+              <option value="normal" selected>normal</option>
+              <option value="aggressive">aggressive</option>
+            </select>
+          </label>
+          <label class="sel">rate/s
+            <input type="number" id="hunt-rate" min="0" value="0" step="1">
+          </label>
+          <label class="chk"><input type="checkbox" id="hunt-scope" checked> enforce scope</label>
+          <label class="chk"><input type="checkbox" id="hunt-auth"> use auth (from env)</label>
+        </div>
+      </div>
+
+      <div class="log-wrap">
+        <div class="log-head">
+          <h3>Live activity</h3>
+          <button class="btn-mini" id="log-clear">clear</button>
+        </div>
+        <div class="log" id="log"></div>
+      </div>
+    </aside>
+  </main>
+
+  <!-- finding detail drawer -->
+  <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
+  <div class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <h2 id="drawer-title">Finding</h2>
+      <button class="btn-mini" id="drawer-close">✕</button>
+    </div>
+    <div class="drawer-body" id="drawer-body"></div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
