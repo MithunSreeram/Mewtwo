@@ -32,16 +32,41 @@ def workspace_path(slug: str) -> Path:
     return workspaces_dir() / slug
 
 
-def current_symlink() -> Path:
+def _active_pointer() -> Path:
+    """Plain file holding the active workspace slug.
+
+    A pointer file works on every platform; the old symlink approach failed on Windows
+    without admin/Developer Mode (WinError 1314).
+    """
+    return mewtwo_home() / "active"
+
+
+def _legacy_symlink() -> Path:
     return mewtwo_home() / "current"
 
 
 def active_workspace() -> Path | None:
-    link = current_symlink()
-    if link.exists() or link.is_symlink():
-        target = link.resolve()
-        if target.exists():
-            return target
+    # Preferred: pointer file with the slug.
+    ptr = _active_pointer()
+    try:
+        if ptr.is_file():
+            slug = ptr.read_text(encoding="utf-8").strip()
+            if slug:
+                ws = workspace_path(slug)
+                if ws.exists():
+                    return ws
+    except OSError:
+        pass
+
+    # Backward compatibility: a legacy 'current' symlink from older versions.
+    legacy = _legacy_symlink()
+    try:
+        if legacy.is_symlink() or legacy.exists():
+            target = legacy.resolve()
+            if target.exists():
+                return target
+    except OSError:
+        pass
     return None
 
 
@@ -49,10 +74,15 @@ def set_active_workspace(slug: str) -> Path:
     ws = workspace_path(slug)
     if not ws.exists():
         raise FileNotFoundError(f"Workspace '{slug}' does not exist.")
-    link = current_symlink()
-    if link.is_symlink():
-        link.unlink()
-    link.symlink_to(ws)
+    # Write the slug to a pointer file (portable; no symlink privileges needed).
+    _active_pointer().write_text(slug, encoding="utf-8")
+    # Clean up any stale legacy symlink so the two don't disagree.
+    legacy = _legacy_symlink()
+    try:
+        if legacy.is_symlink():
+            legacy.unlink()
+    except OSError:
+        pass
     return ws
 
 
