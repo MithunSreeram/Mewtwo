@@ -11,10 +11,18 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel
+
+# Host header values accepted by default. The browser cannot forge the Host header, so an
+# allowlist here defeats DNS-rebinding: a malicious page that re-points its domain to
+# 127.0.0.1 still sends `Host: evil.com`, which is rejected. "testserver" is Starlette's
+# TestClient host (harmless — no real browser sends it). Ports are ignored in matching.
+_DEFAULT_ALLOWED_HOSTS = ["localhost", "127.0.0.1", "::1", "[::1]", "testserver"]
+_LOOPBACK_CLIENTS = {"127.0.0.1", "::1"}
 
 from .. import config
 from ..db import get_db
@@ -86,9 +94,31 @@ def _strip_json_keys(row: dict) -> dict:
 
 # --------------------------------------------------------------------------- app
 
-def create_app() -> FastAPI:
+def create_app(allowed_hosts: list[str] | None = None, loopback_only: bool = False) -> FastAPI:
+    """Build the app.
+
+    allowed_hosts  — Host header allowlist (anti DNS-rebinding). Defaults to loopback names.
+    loopback_only  — when True, reject any request whose peer IP is not loopback (defence in
+                     depth; `mewtwo serve` enables it while bound to 127.0.0.1). An SSH tunnel
+                     arrives as 127.0.0.1, so it passes; a direct hit on a bound LAN IP does not.
+    """
     app = FastAPI(title="Mewtwo", docs_url=None, redoc_url=None, openapi_url=None)
     hub = JobHub()
+
+    # 1. Host header allowlist — primary DNS-rebinding defence (covers HTTP and WebSocket).
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts or _DEFAULT_ALLOWED_HOSTS)
+
+    # 2. Loopback-only client guard — defence in depth for the default localhost bind.
+    if loopback_only:
+        @app.middleware("http")
+        async def _loopback_guard(request: Request, call_next):
+            client = request.client.host if request.client else ""
+            if client not in _LOOPBACK_CLIENTS:
+                return JSONResponse({"detail": "forbidden: non-loopback client"}, status_code=403)
+            return await call_next(request)
+
+    # NOTE: no CORSMiddleware is installed — by design. Without CORS headers the browser's
+    # same-origin policy blocks any cross-origin site from reading these endpoints.
 
     # ---- static frontend ----
     @app.get("/")

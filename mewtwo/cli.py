@@ -346,20 +346,30 @@ def import_cmd(archive, overwrite, no_activate):
 @click.option("--port", default=8000, show_default=True)
 @click.option("--open/--no-open", "open_browser", default=True,
               help="Open the dashboard in your browser on startup.")
-def serve_cmd(host, port, open_browser):
+@click.option("--allow-host", "allow_hosts", multiple=True,
+              help="Extra Host header value to accept (e.g. a VM IP). Repeatable.")
+def serve_cmd(host, port, open_browser, allow_hosts):
     """Launch the local web dashboard (requires: pip install 'mewtwo[web]')."""
     try:
         import uvicorn
-        from .web.app import create_app
+        from .web.app import create_app, _DEFAULT_ALLOWED_HOSTS
     except ImportError:
         error("Web UI dependencies missing. Install with: pip install 'mewtwo[web]'")
         raise SystemExit(1)
 
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    is_localhost = host in ("127.0.0.1", "localhost", "::1")
+    if not is_localhost:
         warn(
             f"Binding to {host} exposes the dashboard beyond localhost. It can launch scans, "
-            f"inject your stored session, and reveal findings. Only do this on a trusted network."
+            f"inject your stored session, and reveal findings. Only do this on a trusted network. "
+            f"Prefer keeping the 127.0.0.1 bind and reaching it over an SSH tunnel "
+            f"(ssh -L {port}:localhost:{port} user@host)."
         )
+
+    # Host allowlist (anti DNS-rebinding). Add the bind host and any --allow-host values so
+    # legitimate direct access works; loopback guard stays on only for the localhost bind.
+    allowed = list(_DEFAULT_ALLOWED_HOSTS) + [host] + list(allow_hosts)
+    app = create_app(allowed_hosts=allowed, loopback_only=is_localhost)
 
     url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
     success(f"Mewtwo dashboard → [bold]{url}[/bold]  (Ctrl-C to stop)")
@@ -377,7 +387,7 @@ def serve_cmd(host, port, open_browser):
 
         threading.Thread(target=_open, daemon=True).start()
 
-    uvicorn.run(create_app(), host=host, port=port, log_level="warning")
+    uvicorn.run(app, host=host, port=port, log_level="warning")
 
 
 @cli.command("dashboard")
