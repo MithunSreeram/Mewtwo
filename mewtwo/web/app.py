@@ -304,6 +304,28 @@ def create_app(allowed_hosts: list[str] | None = None, loopback_only: bool = Fal
             "checked": bool(r.get("checked")),
         } for r in rows]
 
+    @app.get("/api/js-secrets")
+    async def js_secrets():
+        ws, db = _active_db()
+        tid = _target(db)["id"]
+        if "js_secrets" not in db.table_names():
+            return []
+        return [{
+            "secret_type": r.get("secret_type"), "value": r.get("value"),
+            "confidence": r.get("confidence"), "source_url": r.get("source_url"),
+        } for r in db["js_secrets"].rows_where("target_id = ?", [tid])]
+
+    @app.get("/api/technologies")
+    async def technologies():
+        ws, db = _active_db()
+        tid = _target(db)["id"]
+        if "technologies" not in db.table_names():
+            return []
+        return [{
+            "host": r.get("host"), "name": r.get("name"), "version": r.get("version"),
+            "category": r.get("category"), "confidence": r.get("confidence"),
+        } for r in db["technologies"].rows_where("target_id = ?", [tid])]
+
     @app.get("/api/findings")
     async def findings():
         ws, db = _active_db()

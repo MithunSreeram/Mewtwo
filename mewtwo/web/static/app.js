@@ -70,6 +70,8 @@ async function loadTab(tab) {
     if (tab === "overview") return renderOverview(panel);
     if (tab === "subdomains") return renderSubdomains(panel);
     if (tab === "urls") return renderUrls(panel);
+    if (tab === "tech") return renderTech(panel);
+    if (tab === "secrets") return renderSecrets(panel);
     if (tab === "vectors") return renderVectors(panel);
     if (tab === "findings") return renderFindings(panel);
     if (tab === "scope") return renderScope(panel);
@@ -160,12 +162,16 @@ async function renderOverview(panel) {
     const order = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
     const counts = {};
     findings.forEach((f) => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
-    const chips = Object.keys(order).filter((s) => counts[s])
-      .map((s) => `<span class="tag sev-${s}">${counts[s]} ${s}</span>`).join(" ");
+    const present = Object.keys(order).filter((s) => counts[s]);
+    const total = findings.length;
+    const bar = `<div class="sevbar" role="img" aria-label="severity distribution">` +
+      present.map((s) => `<span class="sevbar-seg sev-${s}" style="width:${(counts[s] / total * 100).toFixed(1)}%" title="${counts[s]} ${s}"></span>`).join("") + `</div>`;
+    const chips = present.map((s) => `<span class="tag sev-${s}">${counts[s]} ${s}</span>`).join(" ");
     findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
     const rows = findings.slice(0, 12).map((f) =>
       `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc((f.url || "").slice(0, 50))}</td></tr>`);
-    findingsBlock = `<div class="sev-summary">${chips}</div>
+    findingsBlock = `<h6 class="section-label">Findings by severity</h6>${bar}
+      <div class="sev-summary">${chips}</div>
       <h6 class="section-label">Top findings</h6>` + table(["Severity", "Title", "Class", "URL"], rows);
   } else {
     const msg = nextIdx === -1 ? "No findings recorded."
@@ -196,6 +202,24 @@ async function renderUrls(panel) {
   panel.innerHTML = table(["URL", "Status", "Params"], rows);
 }
 
+async function renderTech(panel) {
+  const techs = await api("/api/technologies");
+  if (!techs.length) { panel.innerHTML = emptyState("No technologies fingerprinted yet. Recon fingerprints each alive host.", { job: "recon", label: "Run recon" }); return wireActions(panel); }
+  const rows = techs.map((t) =>
+    `<tr><td class="mono">${esc(t.host)}</td><td>${esc(t.name)}</td><td class="mono">${esc(t.version || "—")}</td><td>${esc(t.category || "")}</td><td class="mono">${esc(t.confidence ?? "")}</td></tr>`);
+  panel.innerHTML = table(["Host", "Technology", "Version", "Category", "Conf."], rows);
+}
+
+async function renderSecrets(panel) {
+  const secrets = await api("/api/js-secrets");
+  if (!secrets.length) { panel.innerHTML = emptyState("No JS secrets or endpoints found yet. Recon scans JavaScript for keys, tokens and hidden endpoints.", { job: "recon", label: "Run recon" }); return wireActions(panel); }
+  const confClass = (c) => (c === "high" ? "sev-high" : c === "medium" ? "sev-medium" : "sev-low");
+  const rows = secrets.map((s) =>
+    `<tr><td><span class="tag ${confClass(s.confidence)}">${esc(s.confidence || "")}</span></td><td class="mono">${esc(s.secret_type)}</td><td class="mono secret-val">${esc((s.value || "").slice(0, 70))}</td><td class="mono">${esc((s.source_url || "").slice(0, 44))}</td></tr>`);
+  panel.innerHTML = `<p class="hint text-muted">Secrets found in client-side JavaScript. Verify before reporting — some are test keys or false positives.</p>` +
+    table(["Conf.", "Type", "Value", "Source"], rows);
+}
+
 async function renderVectors(panel) {
   const vectors = await api("/api/vectors");
   if (!vectors.length) { panel.innerHTML = emptyState("No attack vectors yet. Map the surface to derive them from recon data.", { job: "surface", label: "Map surface" }); return wireActions(panel); }
@@ -205,16 +229,52 @@ async function renderVectors(panel) {
   panel.innerHTML = table(["Risk", "Category", "Title", "Checked"], rows);
 }
 
+const _SEV_ORDER = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
+const _findingFilter = { sevs: new Set(), status: "", q: "" };
+
 async function renderFindings(panel) {
   const findings = await api("/api/findings");
   STATE.cache.findings = findings;
-  const order = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
   if (!findings.length) { panel.innerHTML = emptyState("No findings yet. Run a hunt against your mapped attack surface.", { job: "hunt", label: "Run hunt" }); return wireActions(panel); }
-  findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
-  const rows = findings.map((f) =>
-    `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc(f.status)}</td></tr>`);
-  panel.innerHTML = table(["Severity", "Title", "Class", "Status"], rows);
-  wireFindingClicks(panel);
+  const statuses = [...new Set(findings.map((f) => f.status))].sort();
+  const sevKeys = Object.keys(_SEV_ORDER);
+  const sevBar = sevKeys.map((s) =>
+    `<button class="tag sev-${s} filt${_findingFilter.sevs.has(s) ? " on" : ""}" data-sev="${s}">${s}</button>`).join(" ");
+  const statusOpts = ['<option value="">all statuses</option>']
+    .concat(statuses.map((s) => `<option value="${esc(s)}"${_findingFilter.status === s ? " selected" : ""}>${esc(s)}</option>`)).join("");
+  panel.innerHTML = `
+    <div class="filterbar">
+      <div class="sev-filters">${sevBar}</div>
+      <select class="input" id="f-status" aria-label="Filter by status" style="width:auto">${statusOpts}</select>
+      <input class="input" id="f-search" placeholder="search title / url / param" aria-label="Search findings" value="${esc(_findingFilter.q)}">
+    </div>
+    <div id="findings-table"></div>`;
+
+  const draw = () => {
+    let fs = findings.slice();
+    if (_findingFilter.sevs.size) fs = fs.filter((f) => _findingFilter.sevs.has(f.severity));
+    if (_findingFilter.status) fs = fs.filter((f) => f.status === _findingFilter.status);
+    if (_findingFilter.q) {
+      const q = _findingFilter.q.toLowerCase();
+      fs = fs.filter((f) => `${f.title} ${f.url} ${f.parameter} ${f.vuln_class}`.toLowerCase().includes(q));
+    }
+    fs.sort((a, b) => (_SEV_ORDER[a.severity] ?? 9) - (_SEV_ORDER[b.severity] ?? 9));
+    const rows = fs.map((f) =>
+      `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc(f.status)}</td></tr>`);
+    const head = `<div class="result-count text-muted">${fs.length} of ${findings.length}</div>`;
+    $("findings-table").innerHTML = head + table(["Severity", "Title", "Class", "Status"], rows);
+    wireFindingClicks($("findings-table"));
+  };
+
+  panel.querySelectorAll("[data-sev]").forEach((b) => b.addEventListener("click", () => {
+    const s = b.dataset.sev;
+    _findingFilter.sevs.has(s) ? _findingFilter.sevs.delete(s) : _findingFilter.sevs.add(s);
+    b.classList.toggle("on");
+    draw();
+  }));
+  $("f-status").addEventListener("change", (e) => { _findingFilter.status = e.target.value; draw(); });
+  $("f-search").addEventListener("input", (e) => { _findingFilter.q = e.target.value; draw(); });
+  draw();
 }
 
 function wireFindingClicks(panel) {

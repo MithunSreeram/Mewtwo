@@ -87,6 +87,28 @@ body { font-size: 15px; }
 .sev-summary { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: var(--space-4); }
 .section-label { color: var(--color-accent); }
 
+/* severity distribution bar */
+.sevbar { display: flex; height: 12px; width: 100%; border: 1px solid var(--color-divider);
+  margin-bottom: var(--space-2); overflow: hidden; }
+.sevbar-seg { height: 100%; }
+.sevbar-seg.sev-critical { background: var(--sev-crit-fg); }
+.sevbar-seg.sev-high { background: var(--sev-high-fg); }
+.sevbar-seg.sev-medium { background: var(--sev-med-fg); }
+.sevbar-seg.sev-low { background: var(--color-accent); }
+.sevbar-seg.sev-informational { background: var(--color-neutral-500); }
+
+/* findings filter bar */
+.filterbar { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center;
+  margin-bottom: var(--space-3); }
+.sev-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag.filt { cursor: pointer; border: 1px solid transparent; opacity: 0.5;
+  font-family: var(--font-body); }
+.tag.filt.on { opacity: 1; outline: 1px solid currentColor; }
+.filterbar .input { min-height: 32px; }
+#f-search { flex: 1; min-width: 160px; }
+.result-count { font-size: 12px; margin-bottom: var(--space-1); }
+.secret-val { color: var(--color-accent-800); }
+
 .empty-state { align-items: center; text-align: center; gap: var(--space-3);
   padding: var(--space-8) var(--space-6); max-width: 440px; margin: var(--space-4) auto; }
 .empty-state p { margin: 0; color: color-mix(in srgb, var(--color-text) 60%, transparent); }

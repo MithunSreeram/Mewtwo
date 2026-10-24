@@ -259,12 +259,17 @@ pip install 'mewtwo[web]'
 mewtwo serve                 # → http://127.0.0.1:8000
 ```
 
-An interactive dark-themed dashboard bound to `127.0.0.1`: live stat cards, findings
-browser with a detail drawer (evidence, repro, references), attack-surface/subdomain/URL
-tables, workspace switcher, and buttons to launch **recon / surface / hunt** as background
+An interactive dashboard bound to `127.0.0.1`: a guided engagement workflow, live stat
+cards, findings browser with filter/search and a detail drawer (evidence, repro,
+references), subdomain / URL / technology / JS-secret / attack-surface tables, workspace
+creation + scope editing, and buttons to launch **recon / surface / hunt** as background
 jobs whose progress streams live over a WebSocket. Secrets (`ANTHROPIC_API_KEY`, auth
 cookies/tokens) stay server-side and are never sent to the browser. Keep the bind on
 localhost — exposing it hands anyone on the network a scan launcher.
+
+**Launch without activating the venv** — double-click `scripts/mewtwo-serve.bat`
+(Windows) or run `scripts/mewtwo-serve.sh` (Linux/macOS); they call the project's venv
+directly. Or run the venv binary straight: `.venv\Scripts\mewtwo.exe serve`.
 
 ---
 
