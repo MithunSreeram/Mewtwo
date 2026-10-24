@@ -39,6 +39,19 @@ class HuntReq(BaseModel):
     use_auth: bool = False
 
 
+class WorkspaceReq(BaseModel):
+    name: str
+    domain: str = ""
+    platform: str = ""
+    program_url: str = ""
+
+
+class ScopeReq(BaseModel):
+    pattern: str
+    scope_type: str = "in"   # in | out | info
+    notes: str = ""
+
+
 # --------------------------------------------------------------------------- helpers
 
 def _active_db():
@@ -126,6 +139,43 @@ def create_app() -> FastAPI:
             raise HTTPException(404, f"Workspace '{slug}' not found.")
         return {"active": slug}
 
+    @app.post("/api/workspaces")
+    async def create_workspace(req: WorkspaceReq):
+        """Create a workspace and set it active — the UI equivalent of `mewtwo init`."""
+        from ..utils.validators import slugify
+        from ..models.target import Target
+        from ..storage.targets import TargetRepository
+
+        name = req.name.strip()
+        if not name:
+            raise HTTPException(400, "Workspace name is required.")
+        slug = slugify(name)
+        ws = config.workspace_path(slug)
+        if ws.exists():
+            config.set_active_workspace(slug)
+            return {"slug": slug, "created": False, "active": True}
+
+        ws.mkdir(parents=True, exist_ok=True)
+        (ws / "reports").mkdir(exist_ok=True)
+        (ws / "evidence").mkdir(exist_ok=True)
+        db = get_db(config.db_path(ws))
+        target = Target(name=name, slug=slug, platform=req.platform,
+                        program_url=req.program_url)
+        TargetRepository(db).upsert(target)
+        db["targets"].upsert(
+            {"id": target.id, "root_domain": req.domain or slug}, pk="id", alter=True)
+        config.set_active_workspace(slug)
+        return {"slug": slug, "created": True, "active": True}
+
+    @app.get("/api/checks")
+    async def checks():
+        """Catalog of available hunt checks (for the UI to display/select)."""
+        from ..modules.hunt.checks import ALL_CHECKS
+        return [{
+            "name": c.name, "vuln_class": c.vuln_class, "description": c.description,
+            "categories": c.applicable_categories, "aggressive_only": c.aggressive_only,
+        } for c in ALL_CHECKS]
+
     @app.get("/api/status")
     async def status():
         ws, db = _active_db()
@@ -157,6 +207,31 @@ def create_app() -> FastAPI:
         if "scope" not in db.table_names():
             return []
         return [dict(r) for r in db["scope"].rows_where("target_id = ?", [tid])]
+
+    @app.post("/api/scope")
+    async def scope_add(req: ScopeReq):
+        ws, db = _active_db()
+        tid = _target(db)["id"]
+        from ..models.target import ScopeEntry, ScopeType
+        from ..storage.targets import ScopeRepository
+        type_map = {"in": ScopeType.IN_SCOPE, "out": ScopeType.OUT_OF_SCOPE,
+                    "info": ScopeType.INFORMATIONAL}
+        if req.scope_type not in type_map:
+            raise HTTPException(400, "scope_type must be in/out/info")
+        if not req.pattern.strip():
+            raise HTTPException(400, "pattern is required")
+        ScopeRepository(db).add(ScopeEntry(
+            target_id=tid, pattern=req.pattern.strip(),
+            scope_type=type_map[req.scope_type], notes=req.notes))
+        return {"added": req.pattern}
+
+    @app.delete("/api/scope")
+    async def scope_remove(pattern: str):
+        ws, db = _active_db()
+        tid = _target(db)["id"]
+        from ..storage.targets import ScopeRepository
+        ScopeRepository(db).remove(tid, pattern)
+        return {"removed": pattern}
 
     # ---- read: data tables ----
     @app.get("/api/subdomains")

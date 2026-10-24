@@ -70,6 +70,7 @@ async function loadTab(tab) {
     if (tab === "urls") return renderUrls(panel);
     if (tab === "vectors") return renderVectors(panel);
     if (tab === "findings") return renderFindings(panel);
+    if (tab === "scope") return renderScope(panel);
   } catch (e) {
     panel.innerHTML = `<div class="empty no">${esc(e.message)}</div>`;
   }
@@ -129,8 +130,52 @@ async function renderFindings(panel) {
 }
 
 function wireFindingClicks(panel) {
-  panel.querySelectorAll("tr.click").forEach((tr) =>
-    tr.addEventListener("click", () => openFinding(tr.dataset.fid)));
+  panel.querySelectorAll("tr.click").forEach((tr) => {
+    tr.setAttribute("tabindex", "0");
+    tr.setAttribute("role", "button");
+    const open = () => openFinding(tr.dataset.fid);
+    tr.addEventListener("click", open);
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+}
+
+// --------------------------------------------------------------- scope manager
+async function renderScope(panel) {
+  const entries = await api("/api/scope");
+  const typeLabel = { in_scope: "in", out_of_scope: "out", informational: "info" };
+  const rows = entries.map((e) => {
+    const t = typeLabel[e.scope_type] || e.scope_type;
+    return `<tr><td class="mono">${esc(e.pattern)}</td><td class="scope-type-${t}">${t}</td><td>${esc(e.notes || "")}</td><td><button class="btn-mini" data-del="${esc(e.pattern)}">remove</button></td></tr>`;
+  });
+  panel.innerHTML = `
+    <div class="scope-add">
+      <input class="grow mono" id="scope-pattern" placeholder="*.example.com" aria-label="Scope pattern">
+      <select id="scope-type" aria-label="Scope type">
+        <option value="in">in scope</option>
+        <option value="out">out of scope</option>
+        <option value="info">informational</option>
+      </select>
+      <button class="btn" id="scope-add-btn">Add</button>
+    </div>
+    ${table(["Pattern", "Type", "Notes", ""], rows)}
+    <p class="hint">In-scope patterns are enforced at request time during Hunt — out-of-scope hosts are blocked before any request is sent.</p>`;
+
+  $("scope-add-btn").addEventListener("click", async () => {
+    const pattern = $("scope-pattern").value.trim();
+    if (!pattern) return toast("Enter a pattern", true);
+    try {
+      await api("/api/scope", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pattern, scope_type: $("scope-type").value }) });
+      toast(`added ${pattern}`); renderScope(panel);
+    } catch (e) { toast(e.message, true); }
+  });
+  $("scope-pattern").addEventListener("keydown", (e) => { if (e.key === "Enter") $("scope-add-btn").click(); });
+  panel.querySelectorAll("[data-del]").forEach((b) => b.addEventListener("click", async () => {
+    try {
+      await api(`/api/scope?pattern=${encodeURIComponent(b.dataset.del)}`, { method: "DELETE" });
+      toast(`removed ${b.dataset.del}`); renderScope(panel);
+    } catch (e) { toast(e.message, true); }
+  }));
 }
 
 // --------------------------------------------------------------- finding drawer
@@ -233,7 +278,60 @@ async function loadWorkspaces() {
     o.selected = w.active;
     sel.appendChild(o);
   }
+  return list;
 }
+
+// --------------------------------------------------------------- workspace modal
+let _lastFocus = null;
+function openModal() {
+  _lastFocus = document.activeElement;
+  $("ws-modal").hidden = false;
+  $("modal-backdrop").hidden = false;
+  setTimeout(() => $("ws-name").focus(), 50);
+}
+function closeModal() {
+  $("ws-modal").hidden = true;
+  $("modal-backdrop").hidden = true;
+  if (_lastFocus && _lastFocus.focus) _lastFocus.focus();
+}
+async function submitWorkspace(e) {
+  e.preventDefault();
+  const name = $("ws-name").value.trim();
+  if (!name) return toast("Name is required", true);
+  try {
+    const r = await api("/api/workspaces", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name, domain: $("ws-domain").value.trim(),
+        platform: $("ws-platform").value, program_url: $("ws-program").value.trim(),
+      }),
+    });
+    closeModal();
+    $("ws-form").reset();
+    toast(r.created ? `created ${r.slug}` : `switched to ${r.slug}`);
+    hideOnboarding();
+    await loadWorkspaces();
+    await loadStatus();
+    await loadTab(STATE.tab === "scope" ? "scope" : "overview");
+    if (r.created) toast("Next: add in-scope patterns in the Scope tab");
+  } catch (err) { toast(err.message, true); }
+}
+
+// --------------------------------------------------------------- onboarding
+function showOnboarding() {
+  $("stats").innerHTML = "";
+  $("target-line").innerHTML = "";
+  $("tabs").style.display = "none";
+  $("panel").innerHTML = `
+    <div class="onboard">
+      <div class="big">🧬</div>
+      <h2>Welcome to Mewtwo</h2>
+      <p>Create a workspace for your target to start recon, surface mapping, and hunting — all from here.</p>
+      <button class="btn btn-accent" id="onboard-create">Create workspace</button>
+    </div>`;
+  $("onboard-create").addEventListener("click", openModal);
+}
+function hideOnboarding() { $("tabs").style.display = ""; }
 
 async function loadHealth() {
   try {
@@ -265,14 +363,27 @@ function wire() {
   $("log-clear").addEventListener("click", () => { $("log").innerHTML = ""; });
   $("drawer-close").addEventListener("click", closeDrawer);
   $("drawer-backdrop").addEventListener("click", closeDrawer);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeDrawer(); });
+  // workspace modal
+  $("btn-new-ws").addEventListener("click", openModal);
+  $("ws-modal-close").addEventListener("click", closeModal);
+  $("ws-cancel").addEventListener("click", closeModal);
+  $("modal-backdrop").addEventListener("click", closeModal);
+  $("ws-form").addEventListener("submit", submitWorkspace);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") { closeDrawer(); closeModal(); }
+  });
 }
 
 async function boot() {
   wire();
   connectWS();
   await loadHealth();
-  await loadWorkspaces();
+  const workspaces = await loadWorkspaces();
+  if (!workspaces.length) {
+    showOnboarding();
+    return;
+  }
+  hideOnboarding();
   await loadStatus();
   await loadTab("overview");
   const js = await api("/api/jobs").catch(() => null);

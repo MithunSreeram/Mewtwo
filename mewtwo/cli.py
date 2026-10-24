@@ -344,7 +344,9 @@ def import_cmd(archive, overwrite, no_activate):
 @click.option("--host", default="127.0.0.1", show_default=True,
               help="Bind address. Keep this on localhost.")
 @click.option("--port", default=8000, show_default=True)
-def serve_cmd(host, port):
+@click.option("--open/--no-open", "open_browser", default=True,
+              help="Open the dashboard in your browser on startup.")
+def serve_cmd(host, port, open_browser):
     """Launch the local web dashboard (requires: pip install 'mewtwo[web]')."""
     try:
         import uvicorn
@@ -358,7 +360,23 @@ def serve_cmd(host, port):
             f"Binding to {host} exposes the dashboard beyond localhost. It can launch scans, "
             f"inject your stored session, and reveal findings. Only do this on a trusted network."
         )
-    success(f"Mewtwo dashboard → [bold]http://{host}:{port}[/bold]  (Ctrl-C to stop)")
+
+    url = f"http://{'127.0.0.1' if host in ('0.0.0.0', '::') else host}:{port}"
+    success(f"Mewtwo dashboard → [bold]{url}[/bold]  (Ctrl-C to stop)")
+
+    if open_browser:
+        # Open the browser shortly after the server starts accepting connections.
+        import threading, time, webbrowser
+
+        def _open():
+            time.sleep(1.2)
+            try:
+                webbrowser.open(url)
+            except Exception:
+                pass
+
+        threading.Thread(target=_open, daemon=True).start()
+
     uvicorn.run(create_app(), host=host, port=port, log_level="warning")
 
 

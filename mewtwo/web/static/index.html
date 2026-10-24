@@ -15,13 +15,14 @@
       <span class="brand-sub">bug bounty dashboard · localhost</span>
     </div>
     <div class="top-right">
-      <label class="ws-pick">
+      <label class="ws-pick" for="ws-select">
         workspace
-        <select id="ws-select"></select>
+        <select id="ws-select" aria-label="Active workspace"></select>
       </label>
-      <span id="badge-ai" class="badge" title="AI features">AI</span>
-      <span id="badge-auth" class="badge" title="Authenticated scanning">auth</span>
-      <span id="conn" class="conn-dot" title="live connection">●</span>
+      <button class="btn-mini" id="btn-new-ws" title="Create a new workspace" aria-label="Create a new workspace">+ New</button>
+      <span id="badge-ai" class="badge" title="AI features configured">AI</span>
+      <span id="badge-auth" class="badge" title="Authenticated scanning configured">auth</span>
+      <span id="conn" class="conn-dot" title="live connection" role="status" aria-label="live connection status">●</span>
     </div>
   </header>
 
@@ -40,6 +41,7 @@
         <button data-tab="urls" class="tab">URLs</button>
         <button data-tab="vectors" class="tab">Attack Surface</button>
         <button data-tab="findings" class="tab">Findings</button>
+        <button data-tab="scope" class="tab">Scope</button>
       </nav>
 
       <div class="panel" id="panel"></div>
@@ -97,7 +99,44 @@
     <div class="drawer-body" id="drawer-body"></div>
   </div>
 
-  <div id="toast" class="toast" hidden></div>
+  <!-- new workspace modal -->
+  <div class="modal-backdrop" id="modal-backdrop" hidden></div>
+  <div class="modal" id="ws-modal" role="dialog" aria-modal="true" aria-labelledby="ws-modal-title" hidden>
+    <div class="modal-head">
+      <h2 id="ws-modal-title">New workspace</h2>
+      <button class="btn-mini" id="ws-modal-close" aria-label="Close dialog">✕</button>
+    </div>
+    <form class="modal-body" id="ws-form">
+      <label class="field">
+        <span>Name <em>*</em></span>
+        <input type="text" id="ws-name" required autocomplete="off" placeholder="Acme Corp" aria-required="true">
+      </label>
+      <label class="field">
+        <span>Root domain</span>
+        <input type="text" id="ws-domain" autocomplete="off" placeholder="acme.com">
+      </label>
+      <label class="field">
+        <span>Platform</span>
+        <select id="ws-platform">
+          <option value="">—</option>
+          <option value="hackerone">HackerOne</option>
+          <option value="bugcrowd">Bugcrowd</option>
+          <option value="private">Private</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Program URL</span>
+        <input type="text" id="ws-program" autocomplete="off" placeholder="https://hackerone.com/acme">
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="ws-cancel">Cancel</button>
+        <button type="submit" class="btn btn-accent">Create</button>
+      </div>
+      <p class="hint">Tip: after creating, add in-scope patterns in the <b>Scope</b> tab before hunting.</p>
+    </form>
+  </div>
+
+  <div id="toast" class="toast" role="alert" hidden></div>
 
   <script src="/static/app.js"></script>
 </body>
