@@ -43,10 +43,12 @@ async function loadStatus() {
     { l: "JS Secrets", n: c.js_secrets },
     { l: "Findings", n: c.findings, hot: c.findings > 0 },
   ];
+  const corners = `<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>`;
   $("stats").innerHTML = "";
   for (const card of cards) {
-    const d = el("div", "stat" + (card.hot ? " hot" : ""));
-    d.innerHTML = `<div class="n">${card.n}</div><div class="l">${card.l}</div>` +
+    const d = el("div", "stat card blueprint" + (card.hot ? " hot" : ""));
+    d.innerHTML = corners +
+      `<div class="n">${card.n}</div><div class="l">${card.l}</div>` +
       (card.sub ? `<div class="sub">${card.sub}</div>` : "");
     $("stats").appendChild(d);
   }
@@ -79,10 +81,10 @@ async function loadTab(tab) {
 function table(headers, rows) {
   if (!rows.length) return `<div class="empty">Nothing here yet.</div>`;
   const thead = `<tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr>`;
-  return `<table><thead>${thead}</thead><tbody>${rows.join("")}</tbody></table>`;
+  return `<table class="table"><thead>${thead}</thead><tbody>${rows.join("")}</tbody></table>`;
 }
 
-function sevPill(sev) { return `<span class="pill sev-${esc(sev)}">${esc(sev)}</span>`; }
+function sevPill(sev) { return `<span class="tag sev-${esc(sev)}">${esc(sev)}</span>`; }
 
 async function renderOverview(panel) {
   const findings = await api("/api/findings");
@@ -91,7 +93,7 @@ async function renderOverview(panel) {
   findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
   const rows = findings.slice(0, 15).map((f) =>
     `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc((f.url || "").slice(0, 50))}</td></tr>`);
-  panel.innerHTML = `<h3 style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.5px">Top findings</h3>` +
+  panel.innerHTML = `<h6 class="section-label">Top findings</h6>` +
     table(["Severity", "Title", "Class", "URL"], rows);
   wireFindingClicks(panel);
 }
@@ -113,8 +115,9 @@ async function renderUrls(panel) {
 
 async function renderVectors(panel) {
   const vectors = await api("/api/vectors");
+  const riskClass = (r) => (r === "critical" ? "sev-critical" : r === "high" ? "sev-high" : r === "low" ? "sev-low" : "sev-medium");
   const rows = vectors.map((v) =>
-    `<tr><td><span class="pill sev-${v.risk_rating === 'critical' || v.risk_rating === 'high' ? 'high' : 'medium'}">${esc(v.risk_rating)}</span></td><td class="mono">${esc(v.category)}</td><td>${esc(v.title)}</td><td>${v.checked ? '<span class="yes">✓</span>' : '<span class="no">○</span>'}</td></tr>`);
+    `<tr><td><span class="tag ${riskClass(v.risk_rating)}">${esc(v.risk_rating)}</span></td><td class="mono">${esc(v.category)}</td><td>${esc(v.title)}</td><td>${v.checked ? '<span class="yes">✓</span>' : '<span class="no">○</span>'}</td></tr>`);
   panel.innerHTML = table(["Risk", "Category", "Title", "Checked"], rows);
 }
 
@@ -145,20 +148,21 @@ async function renderScope(panel) {
   const typeLabel = { in_scope: "in", out_of_scope: "out", informational: "info" };
   const rows = entries.map((e) => {
     const t = typeLabel[e.scope_type] || e.scope_type;
-    return `<tr><td class="mono">${esc(e.pattern)}</td><td class="scope-type-${t}">${t}</td><td>${esc(e.notes || "")}</td><td><button class="btn-mini" data-del="${esc(e.pattern)}">remove</button></td></tr>`;
+    const tagClass = t === "in" ? "sev-low" : t === "out" ? "sev-critical" : "sev-informational";
+    return `<tr><td class="mono">${esc(e.pattern)}</td><td><span class="tag ${tagClass}">${t}</span></td><td>${esc(e.notes || "")}</td><td><button class="btn btn-ghost" data-del="${esc(e.pattern)}">remove</button></td></tr>`;
   });
   panel.innerHTML = `
     <div class="scope-add">
-      <input class="grow mono" id="scope-pattern" placeholder="*.example.com" aria-label="Scope pattern">
-      <select id="scope-type" aria-label="Scope type">
+      <input class="input grow" id="scope-pattern" placeholder="*.example.com" aria-label="Scope pattern">
+      <select class="input" id="scope-type" aria-label="Scope type" style="width:auto">
         <option value="in">in scope</option>
         <option value="out">out of scope</option>
         <option value="info">informational</option>
       </select>
-      <button class="btn" id="scope-add-btn">Add</button>
+      <button class="btn btn-primary" id="scope-add-btn">Add</button>
     </div>
     ${table(["Pattern", "Type", "Notes", ""], rows)}
-    <p class="hint">In-scope patterns are enforced at request time during Hunt — out-of-scope hosts are blocked before any request is sent.</p>`;
+    <p class="hint text-muted">In-scope patterns are enforced at request time during Hunt — out-of-scope hosts are blocked before any request is sent.</p>`;
 
   $("scope-add-btn").addEventListener("click", async () => {
     const pattern = $("scope-pattern").value.trim();
@@ -189,17 +193,17 @@ async function openFinding(id) {
   html += `<div class="kv"><b>Status</b><span class="mono">${esc(f.status)}</span></div>`;
   if (f.url) html += `<div class="kv"><b>URL</b><span class="mono">${esc(f.url)}</span></div>`;
   if (f.parameter) html += `<div class="kv"><b>Parameter</b><span class="mono">${esc(f.parameter)}</span></div>`;
-  if (f.description) html += `<h4>Description</h4><p>${esc(f.description)}</p>`;
-  if (f.impact) html += `<h4>Impact</h4><p>${esc(f.impact)}</p>`;
+  if (f.description) html += `<h6>Description</h6><p>${esc(f.description)}</p>`;
+  if (f.impact) html += `<h6>Impact</h6><p>${esc(f.impact)}</p>`;
   if (Array.isArray(f.reproduction_steps) && f.reproduction_steps.length)
-    html += `<h4>Reproduction</h4><ol>${f.reproduction_steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
+    html += `<h6>Reproduction</h6><ol>${f.reproduction_steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>`;
   if (Array.isArray(f.evidence) && f.evidence.length) {
-    html += `<h4>Evidence</h4>`;
+    html += `<h6>Evidence</h6>`;
     for (const ev of f.evidence) html += `<pre>${esc(typeof ev === "string" ? ev : (ev.content || JSON.stringify(ev)))}</pre>`;
   }
-  if (f.remediation) html += `<h4>Remediation</h4><p>${esc(f.remediation)}</p>`;
+  if (f.remediation) html += `<h6>Remediation</h6><p>${esc(f.remediation)}</p>`;
   if (Array.isArray(f.references) && f.references.length)
-    html += `<h4>References</h4>` + f.references.map((r) => `<div class="mono">${esc(r)}</div>`).join("");
+    html += `<h6>References</h6>` + f.references.map((r) => `<div class="mono">${esc(r)}</div>`).join("");
   body.innerHTML = html;
   $("drawer").hidden = false;
   $("drawer-backdrop").hidden = false;
@@ -323,11 +327,12 @@ function showOnboarding() {
   $("target-line").innerHTML = "";
   $("tabs").style.display = "none";
   $("panel").innerHTML = `
-    <div class="onboard">
-      <div class="big">🧬</div>
+    <div class="onboard card blueprint">
+      <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+      <div class="big"><svg class="icon" aria-hidden="true"><use href="#i-mark"/></svg></div>
       <h2>Welcome to Mewtwo</h2>
       <p>Create a workspace for your target to start recon, surface mapping, and hunting — all from here.</p>
-      <button class="btn btn-accent" id="onboard-create">Create workspace</button>
+      <button class="btn btn-primary" id="onboard-create">Create workspace</button>
     </div>`;
   $("onboard-create").addEventListener("click", openModal);
 }
@@ -353,7 +358,8 @@ function wire() {
   }));
   $("btn-surface").addEventListener("click", () => startJob("/api/jobs/surface", {}));
   $("btn-hunt").addEventListener("click", () => {
-    const tier = $("hunt-tier").value;
+    const checked = document.querySelector('input[name="tier"]:checked');
+    const tier = checked ? checked.value : "normal";
     if (tier === "aggressive" && !confirm("Aggressive tier sends destructive/noisy payloads. Only run against authorised targets. Continue?")) return;
     startJob("/api/jobs/hunt", {
       tier, rate: parseFloat($("hunt-rate").value) || 0,

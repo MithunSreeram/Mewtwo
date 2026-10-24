@@ -1,41 +1,47 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mewtwo</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235980a6' stroke-width='1.5'><polygon points='12 2 21 7 21 17 12 22 3 17 3 7'/></svg>">
+  <link rel="stylesheet" href="/static/ds/styles.css">
   <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="logo">🧬</span>
-      <span class="brand-name">Mewtwo</span>
-      <span class="brand-sub">bug bounty dashboard · localhost</span>
-    </div>
-    <div class="top-right">
-      <label class="ws-pick" for="ws-select">
-        workspace
-        <select id="ws-select" aria-label="Active workspace"></select>
-      </label>
-      <button class="btn-mini" id="btn-new-ws" title="Create a new workspace" aria-label="Create a new workspace">+ New</button>
-      <span id="badge-ai" class="badge" title="AI features configured">AI</span>
-      <span id="badge-auth" class="badge" title="Authenticated scanning configured">auth</span>
-      <span id="conn" class="conn-dot" title="live connection" role="status" aria-label="live connection status">●</span>
-    </div>
+  <!-- icon sprite (Lucide, stroke 1.5) -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-mark" viewBox="0 0 24 24"><polygon points="12 2 21 7 21 17 12 22 3 17 3 7"/><path d="M12 22V12"/><path d="M21 7l-9 5-9-5"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></symbol>
+    <symbol id="i-crosshair" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+  </svg>
+
+  <header class="nav" role="banner">
+    <span class="nav-brand">
+      <svg class="icon icon-accent" aria-hidden="true"><use href="#i-mark"/></svg>
+      Mewtwo <span class="brand-sub text-muted">bug bounty console · localhost</span>
+    </span>
+    <label class="ws-pick text-muted" for="ws-select">workspace
+      <select id="ws-select" class="input" aria-label="Active workspace"></select>
+    </label>
+    <button class="btn btn-secondary" id="btn-new-ws" aria-label="Create a new workspace">
+      <svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg> New
+    </button>
+    <span id="badge-ai" class="tag tag-neutral" title="AI features configured">AI</span>
+    <span id="badge-auth" class="tag tag-neutral" title="Authenticated scanning configured">auth</span>
+    <span id="conn" class="conn-dot" title="live connection" role="status" aria-label="live connection status">●</span>
   </header>
 
   <main class="layout">
     <section class="content">
-      <!-- stat cards -->
       <div class="stats" id="stats"></div>
+      <div class="target-line text-muted" id="target-line"></div>
 
-      <!-- target line -->
-      <div class="target-line" id="target-line"></div>
-
-      <!-- tabs -->
-      <nav class="tabs" id="tabs">
+      <nav class="tabs" id="tabs" aria-label="Views">
         <button data-tab="overview" class="tab active">Overview</button>
         <button data-tab="subdomains" class="tab">Subdomains</button>
         <button data-tab="urls" class="tab">URLs</button>
@@ -48,41 +54,49 @@
     </section>
 
     <aside class="sidebar">
-      <div class="controls">
-        <h3>Run</h3>
+      <div class="card blueprint elev-sm">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+        <h6>Run</h6>
         <div class="job-status" id="job-status">idle</div>
 
         <div class="ctl-group">
-          <button class="btn" id="btn-recon">Recon</button>
+          <button class="btn btn-secondary btn-block" id="btn-recon">
+            <svg class="icon" aria-hidden="true"><use href="#i-search"/></svg> Recon
+          </button>
           <label class="chk"><input type="checkbox" id="recon-passive"> passive only</label>
           <label class="chk"><input type="checkbox" id="recon-force"> force (ignore checkpoints)</label>
         </div>
 
         <div class="ctl-group">
-          <button class="btn" id="btn-surface">Map surface</button>
+          <button class="btn btn-secondary btn-block" id="btn-surface">
+            <svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg> Map surface
+          </button>
         </div>
 
         <div class="ctl-group">
-          <button class="btn btn-accent" id="btn-hunt">Hunt</button>
-          <label class="sel">tier
-            <select id="hunt-tier">
-              <option value="safe">safe</option>
-              <option value="normal" selected>normal</option>
-              <option value="aggressive">aggressive</option>
-            </select>
-          </label>
-          <label class="sel">rate/s
-            <input type="number" id="hunt-rate" min="0" value="0" step="1">
-          </label>
+          <button class="btn btn-primary btn-block" id="btn-hunt">
+            <svg class="icon" aria-hidden="true"><use href="#i-crosshair"/></svg> Hunt
+          </button>
+          <div class="field"><label for="hunt-tier">safety tier</label>
+            <div class="seg" id="hunt-tier" role="radiogroup" aria-label="Safety tier">
+              <label class="seg-opt"><input type="radio" name="tier" value="safe"> safe</label>
+              <label class="seg-opt"><input type="radio" name="tier" value="normal" checked> normal</label>
+              <label class="seg-opt"><input type="radio" name="tier" value="aggressive"> aggressive</label>
+            </div>
+          </div>
+          <div class="field inline"><label for="hunt-rate">rate / s</label>
+            <input class="input" type="number" id="hunt-rate" min="0" value="0" step="1">
+          </div>
           <label class="chk"><input type="checkbox" id="hunt-scope" checked> enforce scope</label>
           <label class="chk"><input type="checkbox" id="hunt-auth"> use auth (from env)</label>
         </div>
       </div>
 
-      <div class="log-wrap">
+      <div class="card blueprint elev-sm log-card">
+        <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
         <div class="log-head">
-          <h3>Live activity</h3>
-          <button class="btn-mini" id="log-clear">clear</button>
+          <h6><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg> Live activity</h6>
+          <button class="btn btn-ghost" id="log-clear">clear</button>
         </div>
         <div class="log" id="log"></div>
       </div>
@@ -91,52 +105,50 @@
 
   <!-- finding detail drawer -->
   <div class="drawer-backdrop" id="drawer-backdrop" hidden></div>
-  <div class="drawer" id="drawer" hidden>
+  <aside class="drawer blueprint" id="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title" hidden>
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
     <div class="drawer-head">
-      <h2 id="drawer-title">Finding</h2>
-      <button class="btn-mini" id="drawer-close">✕</button>
+      <h4 id="drawer-title">Finding</h4>
+      <button class="btn btn-icon btn-secondary" id="drawer-close" aria-label="Close">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
     </div>
     <div class="drawer-body" id="drawer-body"></div>
-  </div>
+  </aside>
 
-  <!-- new workspace modal -->
-  <div class="modal-backdrop" id="modal-backdrop" hidden></div>
-  <div class="modal" id="ws-modal" role="dialog" aria-modal="true" aria-labelledby="ws-modal-title" hidden>
-    <div class="modal-head">
-      <h2 id="ws-modal-title">New workspace</h2>
-      <button class="btn-mini" id="ws-modal-close" aria-label="Close dialog">✕</button>
+  <!-- new workspace dialog -->
+  <div class="dialog-backdrop" id="modal-backdrop" hidden></div>
+  <div class="dialog blueprint" id="ws-modal" role="dialog" aria-modal="true" aria-labelledby="ws-modal-title" hidden>
+    <i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>
+    <div class="dialog-head">
+      <h4 class="dialog-title" id="ws-modal-title">New workspace</h4>
+      <button class="btn btn-icon btn-secondary" id="ws-modal-close" aria-label="Close dialog">
+        <svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>
+      </button>
     </div>
-    <form class="modal-body" id="ws-form">
-      <label class="field">
-        <span>Name <em>*</em></span>
-        <input type="text" id="ws-name" required autocomplete="off" placeholder="Acme Corp" aria-required="true">
-      </label>
-      <label class="field">
-        <span>Root domain</span>
-        <input type="text" id="ws-domain" autocomplete="off" placeholder="acme.com">
-      </label>
-      <label class="field">
-        <span>Platform</span>
-        <select id="ws-platform">
+    <form id="ws-form">
+      <div class="field"><label for="ws-name">Name *</label>
+        <input class="input" type="text" id="ws-name" required autocomplete="off" placeholder="Acme Corp" aria-required="true"></div>
+      <div class="field"><label for="ws-domain">Root domain</label>
+        <input class="input" type="text" id="ws-domain" autocomplete="off" placeholder="acme.com"></div>
+      <div class="field"><label for="ws-platform">Platform</label>
+        <select class="input" id="ws-platform">
           <option value="">—</option>
           <option value="hackerone">HackerOne</option>
           <option value="bugcrowd">Bugcrowd</option>
           <option value="private">Private</option>
-        </select>
-      </label>
-      <label class="field">
-        <span>Program URL</span>
-        <input type="text" id="ws-program" autocomplete="off" placeholder="https://hackerone.com/acme">
-      </label>
-      <div class="modal-actions">
-        <button type="button" class="btn" id="ws-cancel">Cancel</button>
-        <button type="submit" class="btn btn-accent">Create</button>
+        </select></div>
+      <div class="field"><label for="ws-program">Program URL</label>
+        <input class="input" type="text" id="ws-program" autocomplete="off" placeholder="https://hackerone.com/acme"></div>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-secondary" id="ws-cancel">Cancel</button>
+        <button type="submit" class="btn btn-primary">Create</button>
       </div>
-      <p class="hint">Tip: after creating, add in-scope patterns in the <b>Scope</b> tab before hunting.</p>
+      <p class="hint text-muted">Tip: after creating, add in-scope patterns in the <b>Scope</b> tab before hunting.</p>
     </form>
   </div>
 
-  <div id="toast" class="toast" role="alert" hidden></div>
+  <div id="toast" class="toast blueprint" role="alert" hidden></div>
 
   <script src="/static/app.js"></script>
 </body>

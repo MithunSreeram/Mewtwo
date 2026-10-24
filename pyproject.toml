@@ -60,7 +60,7 @@ include = ["mewtwo*"]
 [tool.setuptools.package-data]
 "mewtwo.modules.report" = ["templates/**/*"]
 "mewtwo.modules.hunt" = ["payloads/*"]
-"mewtwo.web" = ["static/*"]
+"mewtwo.web" = ["static/*", "static/ds/*"]
 
 [tool.ruff]
 line-length = 100
