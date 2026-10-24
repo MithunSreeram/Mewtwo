@@ -51,14 +51,22 @@ async def run_full_recon(
     passive_only: bool = False,
     use_ai: bool = True,
     resume: bool = True,
+    on_progress=None,
 ) -> dict:
     """Run all recon steps. Returns summary counts dict.
 
     With ``resume=True`` (default), steps already completed in a previous run are skipped —
     so an interrupted recon can be re-run without redoing finished work.
+
+    ``on_progress``, if given, is called with a dict at each step boundary (used by the web
+    UI for live updates). It never changes behaviour and is a no-op for the CLI.
     """
     if steps is None:
         steps = {"subdomains", "ports", "tech", "urls", "js", "wayback"}
+
+    def _progress(**kw):
+        if on_progress:
+            on_progress(kw)
 
     db = get_db(db_path)
     repo = ReconRepository(db)
@@ -85,6 +93,7 @@ async def run_full_recon(
         summary["subdomains"] = len(subs)
         success(f"Subdomains: {len(subs)} discovered")
         _mark_checkpoint(db, target.id, "subdomains")
+        _progress(phase="subdomains", count=summary["subdomains"])
 
     # 2. Port scanning alive subdomains
     if _should_run("ports"):
@@ -100,6 +109,7 @@ async def run_full_recon(
         if all_ports:
             success(f"Ports: {len(all_ports)} open across {len(alive_hosts)} hosts")
         _mark_checkpoint(db, target.id, "ports")
+        _progress(phase="ports", count=summary["ports"])
 
     # 3. Technology fingerprinting
     if _should_run("tech"):
@@ -118,6 +128,7 @@ async def run_full_recon(
         if all_techs:
             success(f"Technologies: {len(all_techs)} fingerprinted")
         _mark_checkpoint(db, target.id, "tech")
+        _progress(phase="tech", count=summary["technologies"])
 
     # 4. URL crawling
     if _should_run("urls"):
@@ -133,6 +144,7 @@ async def run_full_recon(
         summary["urls"] = len(urls)
         success(f"URLs: {len(urls)} discovered")
         _mark_checkpoint(db, target.id, "urls")
+        _progress(phase="urls", count=summary["urls"])
 
     # 5. Wayback Machine URL harvesting
     if _should_run("wayback"):
@@ -143,6 +155,7 @@ async def run_full_recon(
         if wb_urls:
             success(f"Wayback Machine: {len(wb_urls)} historical URLs")
         _mark_checkpoint(db, target.id, "wayback")
+        _progress(phase="wayback", count=summary["wayback_urls"])
 
     # 6. JS analysis
     if _should_run("js"):
@@ -158,5 +171,6 @@ async def run_full_recon(
         if all_secrets:
             success(f"JS secrets/endpoints: {len(all_secrets)} found")
         _mark_checkpoint(db, target.id, "js")
+        _progress(phase="js", count=summary["js_secrets"])
 
     return summary

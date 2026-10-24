@@ -33,6 +33,7 @@ async def run_hunt(
     rate: float = 0.0,
     auth: tuple[dict, dict] | None = None,
     enforce_scope: bool = True,
+    on_progress=None,
 ) -> list[Finding]:
     """Run hunt checks against attack vectors. Returns confirmed/draft findings."""
     db = get_db(db_path)
@@ -109,6 +110,8 @@ async def run_hunt(
             )
 
             console.print(f"\n[dim]Vector:[/dim] {vector.title[:60]}")
+            if on_progress:
+                on_progress({"phase": "vector", "title": vector.title, "url": vector.url})
 
             # Find applicable checks
             applicable = [
@@ -145,6 +148,12 @@ async def run_hunt(
                         console.print(
                             f"  [yellow]→ {draft.severity.upper()}[/yellow] {draft.title[:60]}"
                         )
+                        if on_progress:
+                            on_progress({
+                                "phase": "finding", "severity": draft.severity,
+                                "title": draft.title, "vuln_class": draft.vuln_class,
+                                "url": draft.url,
+                            })
                 except Exception as e:
                     warn(f"  Check {check.name} failed: {e}")
 
