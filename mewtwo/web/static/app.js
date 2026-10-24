@@ -86,21 +86,103 @@ function table(headers, rows) {
 
 function sevPill(sev) { return `<span class="tag sev-${esc(sev)}">${esc(sev)}</span>`; }
 
+const _bp = `<i class="corner tl"></i><i class="corner tr"></i><i class="corner bl"></i><i class="corner br"></i>`;
+
+// Trigger a job from anywhere (overview steps, empty-state buttons).
+function triggerJob(kind) {
+  if (kind === "recon") return startJob("/api/jobs/recon",
+    { passive_only: $("recon-passive").checked, force: $("recon-force").checked });
+  if (kind === "surface") return startJob("/api/jobs/surface", {});
+  if (kind === "hunt") {
+    const checked = document.querySelector('input[name="tier"]:checked');
+    const tier = checked ? checked.value : "normal";
+    if (tier === "aggressive" && !confirm("Aggressive tier sends destructive/noisy payloads. Only run against authorised targets. Continue?")) return;
+    return startJob("/api/jobs/hunt", { tier, rate: parseFloat($("hunt-rate").value) || 0,
+      enforce_scope: $("hunt-scope").checked, use_auth: $("hunt-auth").checked });
+  }
+}
+
+// A friendly empty state with an optional action (job to run or tab to open).
+function emptyState(msg, action) {
+  const btn = action
+    ? `<button class="btn btn-primary" data-act-job="${action.job || ""}" data-act-tab="${action.tab || ""}">${esc(action.label)}</button>`
+    : "";
+  return `<div class="empty-state card blueprint">${_bp}<p>${esc(msg)}</p>${btn}</div>`;
+}
+
+function wireActions(panel) {
+  panel.querySelectorAll("[data-act-job]").forEach((b) => {
+    const job = b.getAttribute("data-act-job");
+    const tab = b.getAttribute("data-act-tab");
+    b.addEventListener("click", () => {
+      if (job) triggerJob(job);
+      else if (tab) loadTab(tab);
+    });
+  });
+}
+
 async function renderOverview(panel) {
-  const findings = await api("/api/findings");
+  const [status, findings, scope] = await Promise.all([
+    api("/api/status"), api("/api/findings"), api("/api/scope").catch(() => []),
+  ]);
   STATE.cache.findings = findings;
-  const order = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
-  findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
-  const rows = findings.slice(0, 15).map((f) =>
-    `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc((f.url || "").slice(0, 50))}</td></tr>`);
-  panel.innerHTML = `<h6 class="section-label">Top findings</h6>` +
-    table(["Severity", "Title", "Class", "URL"], rows);
+  const c = status.counts;
+  const inScope = scope.filter((s) => s.scope_type === "in_scope").length;
+
+  // --- workflow progress ---
+  const steps = [
+    { label: "Define scope", done: inScope > 0, next: { tab: "scope", label: "Add scope" },
+      detail: inScope ? `${inScope} in-scope pattern(s)` : "add in-scope patterns first" },
+    { label: "Run recon", done: c.subdomains > 0 || c.urls > 0, next: { job: "recon", label: "Run recon" },
+      detail: (c.subdomains || c.urls) ? `${c.subdomains} subdomains · ${c.urls} URLs` : "enumerate the target" },
+    { label: "Map attack surface", done: c.vectors > 0, next: { job: "surface", label: "Map surface" },
+      detail: c.vectors ? `${c.vectors} vectors (${c.vectors_checked} checked)` : "derive attack vectors from recon" },
+    { label: "Hunt", done: c.findings > 0, next: { job: "hunt", label: "Run hunt" },
+      detail: c.findings ? `${c.findings} findings` : "run vulnerability checks" },
+  ];
+  const nextIdx = steps.findIndex((s) => !s.done);
+  const stepHtml = steps.map((s, i) => {
+    const state = s.done ? "done" : (i === nextIdx ? "next" : "todo");
+    const mark = s.done ? "✓" : String(i + 1);
+    const act = state === "next"
+      ? `<button class="btn btn-primary" data-act-job="${s.next.job || ""}" data-act-tab="${s.next.tab || ""}">${esc(s.next.label)}</button>`
+      : "";
+    return `<li class="step step-${state}"><span class="step-mark">${mark}</span>
+      <div class="step-text"><div class="step-label">${esc(s.label)}</div>
+      <div class="step-detail text-muted">${esc(s.detail)}</div></div>${act}</li>`;
+  }).join("");
+  const workflow = `<div class="card blueprint workflow">${_bp}
+    <h6>Engagement workflow</h6><ol class="steps">${stepHtml}</ol></div>`;
+
+  // --- severity breakdown + top findings (only when there are findings) ---
+  let findingsBlock = "";
+  if (findings.length) {
+    const order = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
+    const counts = {};
+    findings.forEach((f) => { counts[f.severity] = (counts[f.severity] || 0) + 1; });
+    const chips = Object.keys(order).filter((s) => counts[s])
+      .map((s) => `<span class="tag sev-${s}">${counts[s]} ${s}</span>`).join(" ");
+    findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
+    const rows = findings.slice(0, 12).map((f) =>
+      `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc((f.url || "").slice(0, 50))}</td></tr>`);
+    findingsBlock = `<div class="sev-summary">${chips}</div>
+      <h6 class="section-label">Top findings</h6>` + table(["Severity", "Title", "Class", "URL"], rows);
+  } else {
+    const msg = nextIdx === -1 ? "No findings recorded."
+      : "No findings yet — work through the steps above, then run a hunt.";
+    findingsBlock = `<h6 class="section-label">Findings</h6>` + emptyState(msg,
+      c.vectors > 0 ? { job: "hunt", label: "Run hunt" } : null);
+  }
+
+  panel.innerHTML = workflow + findingsBlock;
+  wireActions(panel);
   wireFindingClicks(panel);
 }
 
 async function renderSubdomains(panel) {
   const subs = await api("/api/subdomains");
   subs.sort((a, b) => (b.is_alive - a.is_alive) || a.hostname.localeCompare(b.hostname));
+  if (!subs.length) { panel.innerHTML = emptyState("No subdomains yet. Run recon to enumerate the target.", { job: "recon", label: "Run recon" }); return wireActions(panel); }
   const rows = subs.map((s) =>
     `<tr><td class="mono">${esc(s.hostname)}</td><td>${s.is_alive ? '<span class="yes">● alive</span>' : '<span class="no">○</span>'}</td><td class="mono">${esc(s.status_code ?? "—")}</td></tr>`);
   panel.innerHTML = table(["Hostname", "Alive", "Status"], rows);
@@ -108,6 +190,7 @@ async function renderSubdomains(panel) {
 
 async function renderUrls(panel) {
   const urls = await api("/api/urls");
+  if (!urls.length) { panel.innerHTML = emptyState("No URLs yet. Recon crawls the target and harvests historical URLs.", { job: "recon", label: "Run recon" }); return wireActions(panel); }
   const rows = urls.map((u) =>
     `<tr><td class="mono">${esc((u.url || "").slice(0, 80))}</td><td class="mono">${esc(u.status_code ?? "—")}</td><td class="mono">${esc((u.params || []).join(", "))}</td></tr>`);
   panel.innerHTML = table(["URL", "Status", "Params"], rows);
@@ -115,6 +198,7 @@ async function renderUrls(panel) {
 
 async function renderVectors(panel) {
   const vectors = await api("/api/vectors");
+  if (!vectors.length) { panel.innerHTML = emptyState("No attack vectors yet. Map the surface to derive them from recon data.", { job: "surface", label: "Map surface" }); return wireActions(panel); }
   const riskClass = (r) => (r === "critical" ? "sev-critical" : r === "high" ? "sev-high" : r === "low" ? "sev-low" : "sev-medium");
   const rows = vectors.map((v) =>
     `<tr><td><span class="tag ${riskClass(v.risk_rating)}">${esc(v.risk_rating)}</span></td><td class="mono">${esc(v.category)}</td><td>${esc(v.title)}</td><td>${v.checked ? '<span class="yes">✓</span>' : '<span class="no">○</span>'}</td></tr>`);
@@ -125,6 +209,7 @@ async function renderFindings(panel) {
   const findings = await api("/api/findings");
   STATE.cache.findings = findings;
   const order = { critical: 0, high: 1, medium: 2, low: 3, informational: 4 };
+  if (!findings.length) { panel.innerHTML = emptyState("No findings yet. Run a hunt against your mapped attack surface.", { job: "hunt", label: "Run hunt" }); return wireActions(panel); }
   findings.sort((a, b) => (order[a.severity] ?? 9) - (order[b.severity] ?? 9));
   const rows = findings.map((f) =>
     `<tr class="click" data-fid="${esc(f.id)}"><td>${sevPill(f.severity)}</td><td>${esc(f.title)}</td><td class="mono">${esc(f.vuln_class)}</td><td class="mono">${esc(f.status)}</td></tr>`);
